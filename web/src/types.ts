@@ -4,6 +4,8 @@ export type RequestAttempt = {
   outcome: string
   retryable: boolean
   status_code: number | null
+  provider_attempt: number
+  next_action: 'retry_same_provider' | 'failover_next_provider' | 'return_to_client'
 }
 
 export type UsageSummary = {
@@ -24,11 +26,13 @@ export type RecentRequest = {
   status_code: number | null
   duration_ms: number | null
   ttfb_ms: number | null
-  state: string
+  state: RequestState
   error: string | null
   usage: UsageSummary | null
   attempts: RequestAttempt[]
 }
+
+export type RequestState = 'pending' | 'success' | 'interrupted' | 'error'
 
 export type HealthcheckSummary = {
   checked_at: string | null
@@ -78,12 +82,19 @@ export type DashboardResponse = {
   listen_port: number
   primary_provider: string | null
   reloaded_at: string
+  retry_policy: RetryPolicySummary
   providers: ProviderSummary[]
   recent_requests: RecentRequest[]
   stats: {
     global: ProviderStats
     providers: ProviderStats[]
   }
+}
+
+export type RetryPolicySummary = {
+  retryable_status_codes: number[]
+  same_provider_retry_count: number
+  retry_interval_ms: number
 }
 
 export type MetricsWindow = '24h' | '7d'
@@ -144,4 +155,10 @@ export type ProviderFormState = {
   timeoutSeconds: string
   maxFailures: string
   cooldownSeconds: string
+}
+
+export type RetryPolicyFormState = {
+  retryableStatusCodes: string
+  sameProviderRetryCount: string
+  retryIntervalMs: string
 }

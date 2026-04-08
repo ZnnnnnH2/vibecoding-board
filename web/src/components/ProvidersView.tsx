@@ -7,6 +7,7 @@ import {
   formatPercent,
   formatTimestamp,
   getHealthState,
+  getProviderRoutingHint,
   getModelsLabel,
   getProviderStatus,
   sortProviders,
@@ -166,7 +167,7 @@ export function ProvidersView({
                       <td>
                         <div className="table-primary">
                           <span className={`pill pill-${status.tone}`}>{status.label}</span>
-                          <span>{provider.enabled ? messages.providers.eligibleForRouting : messages.providers.ignoredByRouter}</span>
+                          <span>{getProviderRoutingHint(provider, messages)}</span>
                         </div>
                       </td>
                       <td>

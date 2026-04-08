@@ -7,6 +7,17 @@ listen:
   host: 127.0.0.1
   port: 9000
 
+# Retry policy / 重试策略
+retry_policy:
+  retryable_status_codes:
+    - 429
+    - 500
+    - 502
+    - 503
+    - 504
+  same_provider_retry_count: 0
+  retry_interval_ms: 0
+
 # Upstream providers / 上游 Provider 列表
 providers:
   # Explicit model provider / 显式模型 Provider

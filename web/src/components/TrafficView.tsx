@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 
 import {
   formatTimestamp,
-  getRequestStateLabel,
+  getRequestStateMeta,
   requestHeadline,
 } from '../format'
 import { useI18n } from '../i18n'
@@ -11,7 +11,7 @@ import { useI18n } from '../i18n'
 import type { RecentRequest } from '../types'
 
 
-type RequestStateFilter = 'all' | 'success' | 'error' | 'interrupted'
+type RequestStateFilter = 'all' | 'pending' | 'success' | 'error' | 'interrupted'
 type RequestKindFilter = 'all' | 'chat' | 'response'
 
 type TrafficViewProps = {
@@ -37,6 +37,16 @@ export function TrafficView({ requests }: TrafficViewProps) {
     return matchesSearch && matchesState && matchesKind
   })
   const visibleRequests = filteredRequests.slice(0, rowLimit)
+
+  function describeNextAction(nextAction: RecentRequest['attempts'][number]['next_action']): string {
+    if (nextAction === 'retry_same_provider') {
+      return messages.traffic.retrySameProvider
+    }
+    if (nextAction === 'return_to_client') {
+      return messages.traffic.returnToClient
+    }
+    return messages.traffic.failoverNextProvider
+  }
 
   return (
     <div className="page-stack">
@@ -76,6 +86,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
               onChange={(event) => setStateFilter(event.target.value as RequestStateFilter)}
             >
               <option value="all">{messages.traffic.allStates}</option>
+              <option value="pending">{messages.traffic.pending}</option>
               <option value="success">{messages.traffic.success}</option>
               <option value="error">{messages.traffic.failed}</option>
               <option value="interrupted">{messages.traffic.interrupted}</option>
@@ -117,6 +128,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
               <tbody>
                 {visibleRequests.map((request) => {
                   const expanded = expandedRequestId === request.id
+                  const requestState = getRequestStateMeta(request.state, messages)
                   return (
                     <Fragment key={request.id}>
                       <tr key={request.id}>
@@ -138,8 +150,8 @@ export function TrafficView({ requests }: TrafficViewProps) {
                         </td>
                         <td>{request.final_provider ?? messages.traffic.noProviderSelected}</td>
                         <td>
-                          <span className={`pill pill-${request.state === 'success' ? 'emerald' : request.state === 'interrupted' ? 'amber' : 'rose'}`}>
-                            {getRequestStateLabel(request.state, messages)}
+                          <span className={`pill pill-${requestState.tone}`}>
+                            {requestState.label}
                           </span>
                         </td>
                         <td>{request.duration_ms ?? messages.app.notAvailable} ms</td>
@@ -187,11 +199,13 @@ export function TrafficView({ requests }: TrafficViewProps) {
                                         >
                                           <div>
                                             <strong>{attempt.provider}</strong>
+                                            <span>{messages.traffic.providerAttempt(attempt.provider_attempt)}</span>
                                             <span>{attempt.url}</span>
                                           </div>
                                           <div>
                                             <strong>{attempt.outcome}</strong>
                                             <span>{attempt.status_code ?? messages.traffic.noStatus}</span>
+                                            <span>{describeNextAction(attempt.next_action)}</span>
                                           </div>
                                         </div>
                                       ))}

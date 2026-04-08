@@ -15,6 +15,8 @@ class AttemptLogEntry:
     outcome: str
     retryable: bool
     status_code: int | None
+    provider_attempt: int
+    next_action: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -143,6 +145,8 @@ class RequestLogStore:
                         "outcome": attempt.outcome,
                         "retryable": attempt.retryable,
                         "status_code": attempt.status_code,
+                        "provider_attempt": attempt.provider_attempt,
+                        "next_action": attempt.next_action,
                     }
                     for attempt in entry.attempts
                 ],

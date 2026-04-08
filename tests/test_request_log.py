@@ -61,6 +61,8 @@ async def test_pending_requests_are_not_dropped_when_completed_queue_is_full() -
                 outcome="status_retryable",
                 retryable=True,
                 status_code=503,
+                provider_attempt=1,
+                next_action="failover_next_provider",
             )
         ],
     )

@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 
-from vibecoding_board.config import PRIORITY_STEP, ConfigError, ProviderConfig, ProxyConfig
+from vibecoding_board.config import PRIORITY_STEP, ConfigError, ProviderConfig, ProxyConfig, RetryPolicyConfig
 from vibecoding_board.config_store import ConfigStore
 from vibecoding_board.registry import ProviderRegistry, ProviderSnapshot, utc_now
 
@@ -64,6 +64,7 @@ class RuntimeManager:
             "listen_port": runtime.config.listen.port,
             "primary_provider": runtime.config.primary_provider_name(),
             "reloaded_at": runtime.reloaded_at,
+            "retry_policy": runtime.config.retry_policy.model_dump(mode="python"),
             "providers": [
                 self._provider_to_public_dict(provider, healthchecks[provider.name])
                 for provider in providers
@@ -98,6 +99,7 @@ class RuntimeManager:
             providers.append(provider)
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -125,6 +127,7 @@ class RuntimeManager:
             providers[index] = replacement
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -141,6 +144,7 @@ class RuntimeManager:
             providers[index] = providers[index].model_copy(update={"priority": priority})
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -154,6 +158,7 @@ class RuntimeManager:
             providers[index] = current.model_copy(update={"enabled": not current.enabled})
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -168,6 +173,7 @@ class RuntimeManager:
             providers[index] = promoted.model_copy(update={"priority": current_min - PRIORITY_STEP})
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -182,7 +188,18 @@ class RuntimeManager:
             providers.pop(index)
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
                 providers=providers,
+            )
+            return await self._persist_and_activate(updated)
+
+    async def update_retry_policy(self, retry_policy: RetryPolicyConfig) -> RuntimeSnapshot:
+        async with self._mutation_lock:
+            config = self.current().config.model_copy(deep=True)
+            updated = ProxyConfig(
+                listen=config.listen.model_copy(deep=True),
+                retry_policy=retry_policy,
+                providers=[provider.model_copy(deep=True) for provider in config.providers],
             )
             return await self._persist_and_activate(updated)
 

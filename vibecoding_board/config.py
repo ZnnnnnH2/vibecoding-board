@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 ENV_PREFIX = "env:"
 PRIORITY_STEP = 10
+DEFAULT_RETRYABLE_STATUS_CODES = (429, 500, 502, 503, 504)
 
 
 class ConfigError(ValueError):
@@ -51,6 +52,28 @@ class ListenConfig(BaseModel):
 
     host: str = "127.0.0.1"
     port: int = 9000
+
+
+class RetryPolicyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retryable_status_codes: list[int] = Field(
+        default_factory=lambda: list(DEFAULT_RETRYABLE_STATUS_CODES)
+    )
+    same_provider_retry_count: int = Field(default=0, ge=0)
+    retry_interval_ms: int = Field(default=0, ge=0)
+
+    @field_validator("retryable_status_codes")
+    @classmethod
+    def normalize_retryable_status_codes(cls, value: list[int]) -> list[int]:
+        normalized = sorted({int(status_code) for status_code in value})
+        invalid = [status_code for status_code in normalized if status_code < 400 or status_code > 599]
+        if invalid:
+            raise ValueError("retryable_status_codes must contain only HTTP status codes from 400 to 599")
+        return normalized
+
+    def retryable_status_set(self) -> set[int]:
+        return set(self.retryable_status_codes)
 
 
 class ProviderConfig(BaseModel):
@@ -149,6 +172,7 @@ class ProxyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     listen: ListenConfig = Field(default_factory=ListenConfig)
+    retry_policy: RetryPolicyConfig = Field(default_factory=RetryPolicyConfig)
     providers: list[ProviderConfig] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -213,6 +237,11 @@ def dump_proxy_config(config: ProxyConfig) -> str:
 def dump_example_config() -> dict[str, Any]:
     return {
         "listen": {"host": "127.0.0.1", "port": 9000},
+        "retry_policy": {
+            "retryable_status_codes": list(DEFAULT_RETRYABLE_STATUS_CODES),
+            "same_provider_retry_count": 0,
+            "retry_interval_ms": 0,
+        },
         "providers": [
             {
                 "name": "relay_a",

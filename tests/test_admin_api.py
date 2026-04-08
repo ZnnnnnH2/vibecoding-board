@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from threading import Event, Thread
 import uuid
 
 import httpx
@@ -60,13 +62,27 @@ def workspace_tmp_dir() -> Path:
     return path
 
 
-def build_upstream_app() -> FastAPI:
+def build_upstream_app(
+    *,
+    hold_started: Event | None = None,
+    hold_release: Event | None = None,
+) -> FastAPI:
     app = FastAPI()
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request):
         host = request.url.hostname
         payload = await request.json()
+        message = payload.get("messages", [{}])[0].get("content") if payload.get("messages") else None
+
+        if message == "retryable" and host == "relay-a.example.com":
+            return JSONResponse(status_code=503, content={"error": "temporary unavailable"})
+
+        if message == "hold" and host == "relay-a.example.com":
+            if hold_started is not None:
+                hold_started.set()
+            if hold_release is not None:
+                await asyncio.to_thread(hold_release.wait, 2.0)
         return JSONResponse(
             {
                 "id": "chatcmpl-admin",
@@ -134,6 +150,89 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["stats"]["providers"][0]["served_requests"] == 1
         assert payload["stats"]["providers"][0]["total_tokens"] == 9
         assert payload["stats"]["global"]["total_tokens"] == 9
+        assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
+        assert payload["retry_policy"]["same_provider_retry_count"] == 0
+        assert payload["retry_policy"]["retry_interval_ms"] == 0
+
+
+def test_dashboard_exposes_pending_requests_without_counting_them_in_stats(workspace_tmp_dir: Path) -> None:
+    hold_started = Event()
+    hold_release = Event()
+    app = create_app(
+        write_config(workspace_tmp_dir),
+        transport=httpx.ASGITransport(
+            app=build_upstream_app(hold_started=hold_started, hold_release=hold_release)
+        ),
+    )
+
+    with TestClient(app) as client:
+        response_holder: dict[str, object] = {}
+
+        def send_pending_request() -> None:
+            response_holder["response"] = client.post(
+                "/v1/chat/completions",
+                json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hold"}]},
+            )
+
+        request_thread = Thread(target=send_pending_request)
+        request_thread.start()
+        assert hold_started.wait(timeout=2.0)
+        payload = client.get("/admin/api/dashboard").json()
+        hold_release.set()
+        request_thread.join(timeout=2.0)
+
+    assert payload["recent_requests"][0]["state"] == "pending"
+    assert payload["recent_requests"][0]["status_code"] is None
+    assert payload["stats"]["global"]["served_requests"] == 0
+    assert payload["stats"]["global"]["successful_requests"] == 0
+    assert not request_thread.is_alive()
+    assert isinstance(response_holder["response"], httpx.Response)
+    assert response_holder["response"].status_code == 200
+
+
+def test_dashboard_primary_provider_stays_config_preferred_during_cooldown(workspace_tmp_dir: Path) -> None:
+    app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "retryable"}]},
+        )
+        assert response.status_code == 200
+        assert response.json()["choices"][0]["message"]["content"] == "relay-b.example.com"
+
+        payload = client.get("/admin/api/dashboard").json()
+
+    relay_a = next(provider for provider in payload["providers"] if provider["name"] == "relay_a")
+    assert payload["primary_provider"] == "relay_a"
+    assert relay_a["consecutive_failures"] == 2
+    assert relay_a["cooldown_until"] is not None
+
+
+def test_patch_retry_policy_updates_runtime_and_config(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/admin/api/retry-policy",
+            json={
+                "retryable_status_codes": [500, 503, 521, 522, 523, 524],
+                "same_provider_retry_count": 2,
+                "retry_interval_ms": 250,
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()["dashboard"]
+        assert payload["retry_policy"]["retryable_status_codes"] == [500, 503, 521, 522, 523, 524]
+        assert payload["retry_policy"]["same_provider_retry_count"] == 2
+        assert payload["retry_policy"]["retry_interval_ms"] == 250
+
+    saved = load_proxy_config(config_path)
+    assert saved.retry_policy.retryable_status_codes == [500, 503, 521, 522, 523, 524]
+    assert saved.retry_policy.same_provider_retry_count == 2
+    assert saved.retry_policy.retry_interval_ms == 250
 
 
 def test_promote_provider_writes_config_and_changes_routing(workspace_tmp_dir: Path) -> None:

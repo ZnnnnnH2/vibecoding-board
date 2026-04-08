@@ -4,6 +4,7 @@ import type {
   ProviderStats,
   ProviderSummary,
   RecentRequest,
+  RequestState,
 } from './types'
 import type { AppMessages } from './i18n'
 
@@ -51,7 +52,7 @@ export function getProviderStatus(
     return { key: 'disabled', label: messages.providerStatus.disabled, tone: 'slate' }
   }
 
-  if (provider.cooldown_until && new Date(provider.cooldown_until).getTime() > Date.now()) {
+  if (isProviderCooling(provider)) {
     return { key: 'cooling', label: messages.providerStatus.cooling, tone: 'amber' }
   }
 
@@ -60,6 +61,24 @@ export function getProviderStatus(
   }
 
   return { key: 'ready', label: messages.providerStatus.ready, tone: 'emerald' }
+}
+
+
+export function isProviderCooling(provider: Pick<ProviderSummary, 'cooldown_until'>): boolean {
+  return provider.cooldown_until != null && new Date(provider.cooldown_until).getTime() > Date.now()
+}
+
+
+export function getProviderRoutingHint(provider: ProviderSummary, messages: AppMessages): string {
+  if (!provider.enabled) {
+    return messages.providers.ignoredByRouter
+  }
+
+  if (isProviderCooling(provider)) {
+    return messages.providers.temporarilySkipped
+  }
+
+  return messages.providers.availableForMatchingModels
 }
 
 
@@ -85,13 +104,24 @@ export function getModelsLabel(provider: ProviderSummary, messages: AppMessages)
 
 
 export function getRequestStateLabel(state: RecentRequest['state'], messages: AppMessages): string {
+  return getRequestStateMeta(state, messages).label
+}
+
+
+export function getRequestStateMeta(
+  state: RequestState,
+  messages: AppMessages,
+): { label: string; tone: 'emerald' | 'amber' | 'rose' | 'slate' } {
+  if (state === 'pending') {
+    return { label: messages.requestState.pending, tone: 'slate' }
+  }
   if (state === 'success') {
-    return messages.requestState.success
+    return { label: messages.requestState.success, tone: 'emerald' }
   }
   if (state === 'interrupted') {
-    return messages.requestState.interrupted
+    return { label: messages.requestState.interrupted, tone: 'amber' }
   }
-  return messages.requestState.failed
+  return { label: messages.requestState.failed, tone: 'rose' }
 }
 
 

@@ -22,7 +22,7 @@ import {
   formatTimestamp,
   getHealthState,
   getProviderStatus,
-  getRequestStateLabel,
+  getRequestStateMeta,
   requestHeadline,
   sortProviders,
 } from '../format'
@@ -290,25 +290,28 @@ export function OverviewView({
             </div>
           ) : (
             <div className="list-stack">
-              {recentPreview.map((request) => (
-                <button
-                  key={request.id}
-                  type="button"
-                  className="compact-row"
-                  onClick={() => onNavigate('traffic')}
-                >
-                  <div>
-                    <strong>{requestHeadline(request, messages)}</strong>
-                    <span>{request.final_provider ?? messages.traffic.noProviderSelected}</span>
-                  </div>
-                  <div className="compact-row-side">
-                    <span className={`pill pill-${request.state === 'success' ? 'emerald' : request.state === 'interrupted' ? 'amber' : 'rose'}`}>
-                      {getRequestStateLabel(request.state, messages)}
-                    </span>
-                    <small>{formatTimestamp(request.created_at)}</small>
-                  </div>
-                </button>
-              ))}
+              {recentPreview.map((request) => {
+                const requestState = getRequestStateMeta(request.state, messages)
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    className="compact-row"
+                    onClick={() => onNavigate('traffic')}
+                  >
+                    <div>
+                      <strong>{requestHeadline(request, messages)}</strong>
+                      <span>{request.final_provider ?? messages.traffic.noProviderSelected}</span>
+                    </div>
+                    <div className="compact-row-side">
+                      <span className={`pill pill-${requestState.tone}`}>
+                        {requestState.label}
+                      </span>
+                      <small>{formatTimestamp(request.created_at)}</small>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </article>

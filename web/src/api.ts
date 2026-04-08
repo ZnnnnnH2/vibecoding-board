@@ -4,6 +4,7 @@ import type {
   MetricsWindow,
   MutationResponse,
   ProviderFormState,
+  RetryPolicyFormState,
 } from './types'
 import type { AppLocale } from './i18n'
 
@@ -21,6 +22,11 @@ function fallbackRequestError(status: number): string {
     return `请求失败，状态码 ${status}`
   }
   return `Request failed with status ${status}`
+}
+
+
+function localMessage(enText: string, zhText: string): string {
+  return currentLocale === 'zh-CN' ? zhText : enText
 }
 
 
@@ -118,6 +124,36 @@ function buildProviderPayload(form: ProviderFormState) {
 }
 
 
+function buildRetryPolicyPayload(form: RetryPolicyFormState) {
+  const rawTokens = form.retryableStatusCodes
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  const invalidToken = rawTokens.find((token) => !/^\d+$/.test(token))
+  if (invalidToken) {
+    throw new Error(localMessage(`Invalid status code: ${invalidToken}`, `无效状态码：${invalidToken}`))
+  }
+
+  const retryableStatusCodes = rawTokens.map((token) => Number.parseInt(token, 10))
+  const sameProviderRetryCount = Number.parseInt(form.sameProviderRetryCount, 10)
+  const retryIntervalMs = Number.parseInt(form.retryIntervalMs, 10)
+
+  if (!Number.isFinite(sameProviderRetryCount) || sameProviderRetryCount < 0) {
+    throw new Error(localMessage('Retry count must be a non-negative integer.', '重试次数必须是非负整数。'))
+  }
+  if (!Number.isFinite(retryIntervalMs) || retryIntervalMs < 0) {
+    throw new Error(localMessage('Retry interval must be a non-negative integer.', '重试间隔必须是非负整数。'))
+  }
+
+  return {
+    retryable_status_codes: retryableStatusCodes,
+    same_provider_retry_count: sameProviderRetryCount,
+    retry_interval_ms: retryIntervalMs,
+  }
+}
+
+
 export const api = {
   dashboard(signal?: AbortSignal): Promise<DashboardResponse> {
     return request<DashboardResponse>('/admin/api/dashboard', { signal })
@@ -172,6 +208,13 @@ export const api = {
   deleteProvider(name: string): Promise<MutationResponse> {
     return request<MutationResponse>(`/admin/api/providers/${encodeURIComponent(name)}`, {
       method: 'DELETE',
+    })
+  },
+
+  updateRetryPolicy(form: RetryPolicyFormState): Promise<MutationResponse> {
+    return request<MutationResponse>('/admin/api/retry-policy', {
+      method: 'PATCH',
+      body: JSON.stringify(buildRetryPolicyPayload(form)),
     })
   },
 }

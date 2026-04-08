@@ -94,6 +94,17 @@ class ProviderRegistry:
             ]
         return sorted(states, key=lambda state: (state.priority, state.name))
 
+    async def get_preferred_candidate(self, model: str) -> ProviderSnapshot | None:
+        async with self._lock:
+            states = [
+                ProviderSnapshot.from_state(state)
+                for state in self._states.values()
+                if state.provider.enabled and state.supports_model(model)
+            ]
+        if not states:
+            return None
+        return sorted(states, key=lambda state: (state.priority, state.name))[0]
+
     async def list_states(self) -> list[ProviderSnapshot]:
         async with self._lock:
             snapshots = [
@@ -122,15 +133,33 @@ class ProviderRegistry:
             state.last_error = None
             state.last_success_at = self.now_provider()
 
-    async def mark_retryable_failure(self, provider_name: str, error: str) -> None:
+    async def mark_retryable_failure(
+        self,
+        provider_name: str,
+        error: str,
+        *,
+        suppress_cooldown: bool = False,
+    ) -> None:
         async with self._lock:
             state = self._states[provider_name]
             now = self.now_provider()
             state.consecutive_failures += 1
             state.last_error = error
             state.last_failure_at = now
+            if suppress_cooldown:
+                state.cooldown_until = None
+                return
             if state.consecutive_failures >= state.provider.max_failures:
                 state.cooldown_until = now + timedelta(seconds=state.provider.cooldown_seconds)
+
+    async def mark_exhausted_and_cooldown(self, provider_name: str, error: str) -> None:
+        async with self._lock:
+            state = self._states[provider_name]
+            now = self.now_provider()
+            state.consecutive_failures = max(state.consecutive_failures + 1, state.provider.max_failures)
+            state.last_error = error
+            state.last_failure_at = now
+            state.cooldown_until = now + timedelta(seconds=state.provider.cooldown_seconds)
 
     async def get_state(self, provider_name: str) -> ProviderSnapshot:
         async with self._lock:

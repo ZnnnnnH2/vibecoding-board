@@ -6,6 +6,7 @@ import {
   MoonStar,
   Plus,
   RefreshCw,
+  SlidersHorizontal,
   ScrollText,
   SunMedium,
 } from 'lucide-react'
@@ -16,6 +17,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { OverviewView } from './components/OverviewView'
 import { ProviderDrawer } from './components/ProviderDrawer'
 import { ProvidersView } from './components/ProvidersView'
+import { SettingsView } from './components/SettingsView'
 import { TrafficView } from './components/TrafficView'
 import {
   I18nContext,
@@ -31,10 +33,11 @@ import type {
   MetricsWindow,
   ProviderFormState,
   ProviderSummary,
+  RetryPolicyFormState,
 } from './types'
 import type { LocalePreference } from './i18n'
 
-type AdminView = 'overview' | 'providers' | 'traffic'
+type AdminView = 'overview' | 'providers' | 'traffic' | 'settings'
 
 
 const emptyForm: ProviderFormState = {
@@ -81,6 +84,15 @@ function createProviderForm(dashboard: DashboardResponse | null): ProviderFormSt
 }
 
 
+function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicyFormState {
+  return {
+    retryableStatusCodes: dashboard?.retry_policy.retryable_status_codes.join(', ') ?? '429, 500, 502, 503, 504',
+    sameProviderRetryCount: String(dashboard?.retry_policy.same_provider_retry_count ?? 0),
+    retryIntervalMs: String(dashboard?.retry_policy.retry_interval_ms ?? 0),
+  }
+}
+
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
@@ -89,6 +101,7 @@ export default function App() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | null>(null)
   const [editingProvider, setEditingProvider] = useState<ProviderSummary | null>(null)
   const [form, setForm] = useState<ProviderFormState>(emptyForm)
+  const [retryPolicyForm, setRetryPolicyForm] = useState<RetryPolicyFormState>(() => createRetryPolicyForm(null))
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
@@ -105,14 +118,19 @@ export default function App() {
           title: messages.viewMeta.overviewTitle,
           description: messages.viewMeta.overviewDescription,
         }
-      : currentView === 'providers'
+        : currentView === 'providers'
         ? {
             title: messages.viewMeta.providersTitle,
             description: messages.viewMeta.providersDescription,
           }
-        : {
+        : currentView === 'traffic'
+        ? {
             title: messages.viewMeta.trafficTitle,
             description: messages.viewMeta.trafficDescription,
+          }
+        : {
+            title: messages.viewMeta.settingsTitle,
+            description: messages.viewMeta.settingsDescription,
           }
 
   useEffect(() => {
@@ -198,6 +216,13 @@ export default function App() {
     const timer = window.setTimeout(() => setFlash(null), 3500)
     return () => window.clearTimeout(timer)
   }, [flash])
+
+  useEffect(() => {
+    if (!dashboard) {
+      return
+    }
+    setRetryPolicyForm(createRetryPolicyForm(dashboard))
+  }, [dashboard])
 
   async function runMutation(
     actionKey: string,
@@ -291,6 +316,10 @@ export default function App() {
     }
   }
 
+  async function handleRetryPolicySubmit() {
+    await runMutation('retry-policy', () => api.updateRetryPolicy(retryPolicyForm))
+  }
+
   const proxyBase =
     dashboard === null
       ? 'http://127.0.0.1:9000/v1'
@@ -337,6 +366,14 @@ export default function App() {
           >
             <ScrollText size={18} />
             <span>{messages.app.navTraffic}</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-item${currentView === 'settings' ? ' nav-item-active' : ''}`}
+            onClick={() => setCurrentView('settings')}
+          >
+            <SlidersHorizontal size={18} />
+            <span>{messages.app.navSettings}</span>
           </button>
         </nav>
 
@@ -466,8 +503,17 @@ export default function App() {
               onDelete={(provider) => setDeletingProvider(provider)}
               onPrioritySave={handlePrioritySave}
             />
-          ) : (
+          ) : currentView === 'traffic' ? (
             <TrafficView requests={dashboard.recent_requests} />
+          ) : (
+            <SettingsView
+              form={retryPolicyForm}
+              busy={busyAction === 'retry-policy'}
+              onChange={setRetryPolicyForm}
+              onSubmit={() => {
+                void handleRetryPolicySubmit()
+              }}
+            />
           )}
         </main>
       </div>

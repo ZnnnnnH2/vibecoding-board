@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from vibecoding_board.admin_i18n import admin_message, resolve_admin_locale, translate_admin_error
-from vibecoding_board.config import ProviderConfig
+from vibecoding_board.config import ProviderConfig, RetryPolicyConfig
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
 
@@ -81,6 +81,21 @@ class ProviderPriorityUpdatePayload(BaseModel):
     priority: int
 
 
+class RetryPolicyUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retryable_status_codes: list[int]
+    same_provider_retry_count: int = Field(ge=0)
+    retry_interval_ms: int = Field(ge=0)
+
+    def to_retry_policy_config(self) -> RetryPolicyConfig:
+        return RetryPolicyConfig(
+            retryable_status_codes=self.retryable_status_codes,
+            same_provider_retry_count=self.same_provider_retry_count,
+            retry_interval_ms=self.retry_interval_ms,
+        )
+
+
 def build_admin_router() -> APIRouter:
     router = APIRouter(prefix="/admin/api", tags=["admin"])
 
@@ -124,6 +139,24 @@ def build_admin_router() -> APIRouter:
         window: Literal["24h", "7d"] = "24h",
     ):
         return await request.app.state.metrics_store.metrics_payload(window=window)
+
+    @router.patch("/retry-policy")
+    async def update_retry_policy(payload: RetryPolicyUpdatePayload, request: Request):
+        locale = resolve_admin_locale(request)
+        manager = get_manager(request)
+        request_log_store = get_request_log_store(request)
+        try:
+            await manager.update_retry_policy(payload.to_retry_policy_config())
+        except RuntimeMutationError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "updated_retry_policy"),
+        )
 
     @router.post("/providers")
     async def create_provider(payload: ProviderCreatePayload, request: Request):

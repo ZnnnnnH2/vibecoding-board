@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import codecs
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from vibecoding_board.admin_metrics import AdminMetricsStore
-from vibecoding_board.config import ConfigError
+from vibecoding_board.config import ConfigError, RetryPolicyConfig
 from vibecoding_board.request_log import AttemptLogEntry, RequestLogStore
 from vibecoding_board.request_log import UsageLogEntry
 from vibecoding_board.registry import ProviderRegistry, ProviderSnapshot
@@ -35,8 +36,6 @@ HOP_BY_HOP_HEADERS = {
     "content-length",
 }
 
-RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 404}
 RETRYABLE_EXCEPTIONS = (
     httpx.ConnectError,
     httpx.ConnectTimeout,
@@ -56,6 +55,8 @@ class AttemptResult:
     outcome: str
     retryable: bool
     status_code: int | None = None
+    provider_attempt: int = 1
+    next_action: str = "failover_next_provider"
 
 
 def build_error_response(
@@ -81,6 +82,8 @@ def build_error_response(
                 "outcome": attempt.outcome,
                 "retryable": attempt.retryable,
                 "status_code": attempt.status_code,
+                "provider_attempt": attempt.provider_attempt,
+                "next_action": attempt.next_action,
             }
             for attempt in attempts
         ]
@@ -124,13 +127,11 @@ def build_upstream_url(provider: ProviderSnapshot, path: str) -> str:
     return join_upstream_url(provider.base_url, path)
 
 
-def classify_status(status_code: int) -> str:
-    if status_code in RETRYABLE_STATUS_CODES:
-        return "retryable"
-    if status_code in NON_RETRYABLE_STATUS_CODES:
-        return "non_retryable"
+def classify_status(status_code: int, retryable_status_codes: set[int]) -> str:
     if 200 <= status_code < 400:
         return "success"
+    if status_code in retryable_status_codes:
+        return "retryable"
     return "non_retryable"
 
 
@@ -253,6 +254,7 @@ class ProxyService:
                 model=model,
                 candidates=candidates,
                 registry=runtime.registry,
+                retry_policy=runtime.config.retry_policy,
                 log_id=log_id,
                 started_at=started_at,
             )
@@ -263,6 +265,7 @@ class ProxyService:
             model=model,
             candidates=candidates,
             registry=runtime.registry,
+            retry_policy=runtime.config.retry_policy,
             log_id=log_id,
             started_at=started_at,
         )
@@ -295,74 +298,95 @@ class ProxyService:
         model: str,
         candidates: list[ProviderSnapshot],
         registry: ProviderRegistry,
+        retry_policy: RetryPolicyConfig,
         log_id: str,
         started_at: float,
     ) -> Response:
         attempts: list[AttemptResult] = []
+        retryable_status_codes = retry_policy.retryable_status_set()
+        max_same_provider_attempts = retry_policy.same_provider_retry_count + 1
         for provider in candidates:
             headers = build_upstream_headers(incoming_headers, provider)
             url = build_upstream_url(provider, path)
-            try:
-                response = await self.client.post(
-                    url,
-                    content=body,
-                    headers=headers,
-                    timeout=provider.timeout_seconds,
-                )
-            except RETRYABLE_EXCEPTIONS as exc:
-                await registry.mark_retryable_failure(provider.name, str(exc))
-                attempts.append(
-                    AttemptResult(
-                        provider=provider.name,
-                        url=url,
-                        outcome=type(exc).__name__,
-                        retryable=True,
+            provider_exhausted = False
+            for provider_attempt in range(1, max_same_provider_attempts + 1):
+                try:
+                    response = await self.client.post(
+                        url,
+                        content=body,
+                        headers=headers,
+                        timeout=provider.timeout_seconds,
                     )
-                )
-                LOGGER.warning("upstream request failed before response", extra={"provider": provider.name})
-                continue
-
-            status_kind = classify_status(response.status_code)
-            if status_kind == "retryable":
-                await registry.mark_retryable_failure(provider.name, f"retryable status {response.status_code}")
-                attempts.append(
-                    AttemptResult(
-                        provider=provider.name,
-                        url=url,
-                        outcome="status_retryable",
-                        retryable=True,
-                        status_code=response.status_code,
+                except RETRYABLE_EXCEPTIONS as exc:
+                    await registry.mark_retryable_failure(provider.name, str(exc))
+                    attempts.append(
+                        AttemptResult(
+                            provider=provider.name,
+                            url=url,
+                            outcome=type(exc).__name__,
+                            retryable=True,
+                            provider_attempt=provider_attempt,
+                            next_action="failover_next_provider",
+                        )
                     )
-                )
-                LOGGER.warning(
-                    "upstream returned retryable status",
-                    extra={"provider": provider.name, "status_code": response.status_code},
-                )
-                continue
+                    LOGGER.warning("upstream request failed before response", extra={"provider": provider.name})
+                    provider_exhausted = True
+                    break
 
-            duration_ms = int((perf_counter() - started_at) * 1000)
-            usage = self._extract_usage_from_response(response)
-            state = "success" if status_kind == "success" else "error"
-            error = None if state == "success" else self._extract_upstream_error_message(response)
-            if state == "success":
-                await registry.mark_success(provider.name)
-            await self._finalize_request(
-                log_id,
-                final_provider=provider.name,
-                final_url=url,
-                status_code=response.status_code,
-                duration_ms=duration_ms,
-                ttfb_ms=duration_ms,
-                state=state,
-                error=error,
-                usage=usage,
-                attempts=self._to_attempt_logs(attempts),
-            )
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=normalize_response_headers(response.headers),
-            )
+                status_kind = classify_status(response.status_code, retryable_status_codes)
+                if status_kind == "retryable":
+                    exhausted = provider_attempt >= max_same_provider_attempts
+                    attempts.append(
+                        AttemptResult(
+                            provider=provider.name,
+                            url=url,
+                            outcome="status_retryable",
+                            retryable=True,
+                            status_code=response.status_code,
+                            provider_attempt=provider_attempt,
+                            next_action="failover_next_provider" if exhausted else "retry_same_provider",
+                        )
+                    )
+                    LOGGER.warning(
+                        "upstream returned retryable status",
+                        extra={"provider": provider.name, "status_code": response.status_code},
+                    )
+                    if exhausted:
+                        await registry.mark_exhausted_and_cooldown(
+                            provider.name,
+                            f"retryable status {response.status_code}",
+                        )
+                        provider_exhausted = True
+                        break
+                    await self._sleep_before_same_provider_retry(retry_policy.retry_interval_ms)
+                    continue
+
+                duration_ms = int((perf_counter() - started_at) * 1000)
+                usage = self._extract_usage_from_response(response)
+                state = "success" if status_kind == "success" else "error"
+                error = None if state == "success" else self._extract_upstream_error_message(response)
+                if state == "success":
+                    await registry.mark_success(provider.name)
+                await self._finalize_request(
+                    log_id,
+                    final_provider=provider.name,
+                    final_url=url,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                    ttfb_ms=duration_ms,
+                    state=state,
+                    error=error,
+                    usage=usage,
+                    attempts=self._to_attempt_logs(attempts),
+                )
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    headers=normalize_response_headers(response.headers),
+                )
+
+            if provider_exhausted:
+                continue
 
         await self._finalize_request(
             log_id,
@@ -393,110 +417,134 @@ class ProxyService:
         model: str,
         candidates: list[ProviderSnapshot],
         registry: ProviderRegistry,
+        retry_policy: RetryPolicyConfig,
         log_id: str,
         started_at: float,
     ) -> Response:
         attempts: list[AttemptResult] = []
+        retryable_status_codes = retry_policy.retryable_status_set()
+        max_same_provider_attempts = retry_policy.same_provider_retry_count + 1
         for provider in candidates:
             url = build_upstream_url(provider, path)
-            request = self.client.build_request(
-                "POST",
-                url,
-                content=body,
-                headers=build_upstream_headers(incoming_headers, provider),
-                timeout=provider.timeout_seconds,
-            )
-            try:
-                response = await self.client.send(
-                    request,
-                    stream=True,
+            provider_exhausted = False
+            for provider_attempt in range(1, max_same_provider_attempts + 1):
+                request = self.client.build_request(
+                    "POST",
+                    url,
+                    content=body,
+                    headers=build_upstream_headers(incoming_headers, provider),
+                    timeout=provider.timeout_seconds,
                 )
-            except RETRYABLE_EXCEPTIONS as exc:
-                await registry.mark_retryable_failure(provider.name, str(exc))
-                attempts.append(
-                    AttemptResult(
-                        provider=provider.name,
-                        url=url,
-                        outcome=type(exc).__name__,
-                        retryable=True,
+                try:
+                    response = await self.client.send(
+                        request,
+                        stream=True,
                     )
-                )
-                continue
+                except RETRYABLE_EXCEPTIONS as exc:
+                    await registry.mark_retryable_failure(provider.name, str(exc))
+                    attempts.append(
+                        AttemptResult(
+                            provider=provider.name,
+                            url=url,
+                            outcome=type(exc).__name__,
+                            retryable=True,
+                            provider_attempt=provider_attempt,
+                            next_action="failover_next_provider",
+                        )
+                    )
+                    provider_exhausted = True
+                    break
 
-            status_kind = classify_status(response.status_code)
-            if status_kind == "retryable":
-                await registry.mark_retryable_failure(provider.name, f"retryable status {response.status_code}")
-                attempts.append(
-                    AttemptResult(
-                        provider=provider.name,
-                        url=url,
-                        outcome="status_retryable",
-                        retryable=True,
+                status_kind = classify_status(response.status_code, retryable_status_codes)
+                if status_kind == "retryable":
+                    exhausted = provider_attempt >= max_same_provider_attempts
+                    attempts.append(
+                        AttemptResult(
+                            provider=provider.name,
+                            url=url,
+                            outcome="status_retryable",
+                            retryable=True,
+                            status_code=response.status_code,
+                            provider_attempt=provider_attempt,
+                            next_action="failover_next_provider" if exhausted else "retry_same_provider",
+                        )
+                    )
+                    await response.aclose()
+                    if exhausted:
+                        await registry.mark_exhausted_and_cooldown(
+                            provider.name,
+                            f"retryable status {response.status_code}",
+                        )
+                        provider_exhausted = True
+                        break
+                    await self._sleep_before_same_provider_retry(retry_policy.retry_interval_ms)
+                    continue
+
+                if status_kind == "non_retryable":
+                    body_bytes = await response.aread()
+                    await response.aclose()
+                    duration_ms = int((perf_counter() - started_at) * 1000)
+                    usage = self._extract_usage_from_bytes(body_bytes)
+                    await self._finalize_request(
+                        log_id,
+                        final_provider=provider.name,
+                        final_url=url,
                         status_code=response.status_code,
+                        duration_ms=duration_ms,
+                        ttfb_ms=duration_ms,
+                        state="error",
+                        error=self._extract_upstream_error_message(response),
+                        usage=usage,
+                        attempts=self._to_attempt_logs(attempts),
                     )
-                )
-                await response.aclose()
-                continue
+                    return Response(
+                        content=body_bytes,
+                        status_code=response.status_code,
+                        headers=normalize_response_headers(response.headers),
+                    )
 
-            if status_kind == "non_retryable":
-                body_bytes = await response.aread()
-                await response.aclose()
-                duration_ms = int((perf_counter() - started_at) * 1000)
-                usage = self._extract_usage_from_bytes(body_bytes)
-                await self._finalize_request(
-                    log_id,
-                    final_provider=provider.name,
-                    final_url=url,
-                    status_code=response.status_code,
-                    duration_ms=duration_ms,
-                    ttfb_ms=duration_ms,
-                    state="error",
-                    error=self._extract_upstream_error_message(response),
-                    usage=usage,
-                    attempts=self._to_attempt_logs(attempts),
-                )
-                return Response(
-                    content=body_bytes,
+                stream_iterator = response.aiter_raw()
+                try:
+                    first_chunk = await anext(stream_iterator)
+                    ttfb_ms = int((perf_counter() - started_at) * 1000)
+                except StopAsyncIteration:
+                    first_chunk = b""
+                    ttfb_ms = int((perf_counter() - started_at) * 1000)
+                except RETRYABLE_EXCEPTIONS as exc:
+                    await registry.mark_retryable_failure(provider.name, str(exc))
+                    attempts.append(
+                        AttemptResult(
+                            provider=provider.name,
+                            url=url,
+                            outcome=type(exc).__name__,
+                            retryable=True,
+                            provider_attempt=provider_attempt,
+                            next_action="failover_next_provider",
+                        )
+                    )
+                    await response.aclose()
+                    provider_exhausted = True
+                    break
+
+                return StreamingResponse(
+                    self._stream_response(
+                        registry=registry,
+                        provider=provider,
+                        final_url=url,
+                        response=response,
+                        first_chunk=first_chunk,
+                        stream_iterator=stream_iterator,
+                        log_id=log_id,
+                        started_at=started_at,
+                        ttfb_ms=ttfb_ms,
+                        attempts=self._to_attempt_logs(attempts),
+                    ),
                     status_code=response.status_code,
                     headers=normalize_response_headers(response.headers),
                 )
 
-            stream_iterator = response.aiter_raw()
-            try:
-                first_chunk = await anext(stream_iterator)
-                ttfb_ms = int((perf_counter() - started_at) * 1000)
-            except StopAsyncIteration:
-                first_chunk = b""
-                ttfb_ms = int((perf_counter() - started_at) * 1000)
-            except RETRYABLE_EXCEPTIONS as exc:
-                await registry.mark_retryable_failure(provider.name, str(exc))
-                attempts.append(
-                    AttemptResult(
-                        provider=provider.name,
-                        url=url,
-                        outcome=type(exc).__name__,
-                        retryable=True,
-                    )
-                )
-                await response.aclose()
+            if provider_exhausted:
                 continue
-
-            return StreamingResponse(
-                self._stream_response(
-                    registry=registry,
-                    provider=provider,
-                    final_url=url,
-                    response=response,
-                    first_chunk=first_chunk,
-                    stream_iterator=stream_iterator,
-                    log_id=log_id,
-                    started_at=started_at,
-                    ttfb_ms=ttfb_ms,
-                    attempts=self._to_attempt_logs(attempts),
-                ),
-                status_code=response.status_code,
-                headers=normalize_response_headers(response.headers),
-            )
 
         await self._finalize_request(
             log_id,
@@ -625,9 +673,17 @@ class ProxyService:
                 outcome=attempt.outcome,
                 retryable=attempt.retryable,
                 status_code=attempt.status_code,
+                provider_attempt=attempt.provider_attempt,
+                next_action=attempt.next_action,
             )
             for attempt in attempts
         ]
+
+    @staticmethod
+    async def _sleep_before_same_provider_retry(retry_interval_ms: int) -> None:
+        if retry_interval_ms <= 0:
+            return
+        await asyncio.sleep(retry_interval_ms / 1000)
 
     @staticmethod
     def _request_kind(path: str) -> str:
