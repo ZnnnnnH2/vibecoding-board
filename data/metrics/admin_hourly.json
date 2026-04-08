@@ -1,5 +1,5 @@
 {
-  "last_flushed_at": "2026-04-08T09:42:34.649148+08:00",
+  "last_flushed_at": "2026-04-08T09:57:06.417520+08:00",
   "retention_hours": 720,
   "buckets": [
     {
@@ -26,23 +26,23 @@
     },
     {
       "bucket_start": "2026-04-08T09:00:00+08:00",
-      "requests": 77,
-      "success_count": 72,
-      "interrupted_count": 5,
+      "requests": 103,
+      "success_count": 97,
+      "interrupted_count": 6,
       "error_count": 0,
-      "total_tokens": 3809374,
-      "duration_sum_ms": 2729477,
-      "duration_count": 77,
-      "ttfb_sum_ms": 232354,
-      "ttfb_count": 77,
+      "total_tokens": 8276446,
+      "duration_sum_ms": 3687875,
+      "duration_count": 103,
+      "ttfb_sum_ms": 357088,
+      "ttfb_count": 103,
       "providers": {
         "relay_998": {
           "requests": 45,
           "total_tokens": 1386403
         },
         "relay_asxs": {
-          "requests": 32,
-          "total_tokens": 2422971
+          "requests": 58,
+          "total_tokens": 6890043
         }
       }
     }
