@@ -1,8 +1,15 @@
+# Example configuration / 示例配置
+# Copy this file to config.yaml and replace the placeholder upstreams and keys.
+# 复制本文件为 config.yaml，然后替换其中的上游地址与密钥引用。
+
+# Local listen address / 本地监听地址
 listen:
   host: 127.0.0.1
   port: 9000
 
+# Upstream providers / 上游 Provider 列表
 providers:
+  # Explicit model provider / 显式模型 Provider
   - name: relay_a
     base_url: https://relay-a.example.com/v1
     api_key: env:RELAY_A_API_KEY
@@ -15,6 +22,9 @@ providers:
     max_failures: 3
     cooldown_seconds: 30
 
+  # Wildcard model provider / 通配模型 Provider
+  # Lower priority means it is tried later than relay_a.
+  # priority 数值更大，所以它会排在 relay_a 后面尝试。
   - name: relay_b
     base_url: https://relay-b.example.com/v1
     api_key: env:RELAY_B_API_KEY
@@ -22,6 +32,8 @@ providers:
     priority: 20
     models:
       - "*"
+    # Required for wildcard providers if you want manual health checks.
+    # 如果是通配模型 Provider，想启用手动健康检查就必须设置此项。
     healthcheck_model: gpt-4o-mini
     timeout_seconds: 60
     max_failures: 3

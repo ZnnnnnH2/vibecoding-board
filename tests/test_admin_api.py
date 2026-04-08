@@ -299,6 +299,32 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
     assert created.healthcheck_model == "gpt-4o-mini"
 
 
+def test_create_provider_returns_localized_message_when_locale_is_chinese(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/api/providers",
+            headers={"x-admin-locale": "zh-CN"},
+            json={
+                "name": "relay_c",
+                "base_url": "https://relay-c.example.com/v1",
+                "api_key": "key-c",
+                "enabled": True,
+                "priority": 30,
+                "models": ["*"],
+                "healthcheck_model": "gpt-4o-mini",
+                "timeout_seconds": 25,
+                "max_failures": 2,
+                "cooldown_seconds": 40,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["message"] == "已添加 Provider relay_c。"
+
+
 def test_delete_last_provider_is_rejected(workspace_tmp_dir: Path) -> None:
     config = ProxyConfig.model_validate(
         {
@@ -325,6 +351,37 @@ def test_delete_last_provider_is_rejected(workspace_tmp_dir: Path) -> None:
 
         assert response.status_code == 400
         assert "At least one provider" in response.json()["detail"]
+
+
+def test_delete_last_provider_error_is_localized_when_locale_is_chinese(workspace_tmp_dir: Path) -> None:
+    config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_only",
+                    "base_url": "https://relay-only.example.com/v1",
+                    "api_key": "key-only",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+    app = create_app(write_config(workspace_tmp_dir, config), transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/admin/api/providers/relay_only",
+            headers={"x-admin-locale": "zh-CN"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "至少需要保留一个已配置的 Provider。"
 
 
 def test_manual_healthcheck_updates_provider_state_without_logging_request(workspace_tmp_dir: Path) -> None:

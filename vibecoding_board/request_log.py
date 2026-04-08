@@ -46,8 +46,8 @@ class RequestLogEntry:
 class RequestLogStore:
     def __init__(self, capacity: int = 200) -> None:
         self.capacity = capacity
-        self._entries: deque[RequestLogEntry] = deque(maxlen=capacity)
-        self._index: dict[str, RequestLogEntry] = {}
+        self._completed_entries: deque[RequestLogEntry] = deque(maxlen=capacity)
+        self._pending_entries: dict[str, RequestLogEntry] = {}
         self._lock = asyncio.Lock()
 
     async def begin(
@@ -76,9 +76,7 @@ class RequestLogStore:
             attempts=[],
         )
         async with self._lock:
-            self._entries.appendleft(entry)
-            self._index[entry.id] = entry
-            self._trim_index()
+            self._pending_entries[entry.id] = entry
         return entry.id
 
     async def complete(
@@ -96,7 +94,7 @@ class RequestLogStore:
         attempts: list[AttemptLogEntry],
     ) -> None:
         async with self._lock:
-            entry = self._index.get(entry_id)
+            entry = self._pending_entries.pop(entry_id, None)
             if entry is None:
                 return
             entry.final_provider = final_provider
@@ -108,10 +106,12 @@ class RequestLogStore:
             entry.error = error
             entry.usage = usage
             entry.attempts = attempts
+            self._completed_entries.appendleft(entry)
 
     async def list_entries(self) -> list[dict[str, object]]:
         async with self._lock:
-            entries = list(self._entries)
+            pending_entries = list(self._pending_entries.values())[::-1]
+            entries = pending_entries + list(self._completed_entries)
         return [
             {
                 "id": entry.id,
@@ -152,7 +152,7 @@ class RequestLogStore:
 
     async def aggregated_stats(self, provider_names: list[str]) -> dict[str, object]:
         async with self._lock:
-            entries = list(self._entries)
+            entries = list(self._completed_entries)
 
         relevant_entries = [entry for entry in entries if entry.final_provider in provider_names]
 
@@ -205,8 +205,6 @@ class RequestLogStore:
             "requests_with_usage": requests_with_usage,
         }
 
-    def _trim_index(self) -> None:
-        valid_ids = {entry.id for entry in self._entries}
-        stale_ids = [entry_id for entry_id in self._index if entry_id not in valid_ids]
-        for entry_id in stale_ids:
-            self._index.pop(entry_id, None)
+    async def pending_count(self) -> int:
+        async with self._lock:
+            return len(self._pending_entries)

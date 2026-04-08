@@ -11,6 +11,7 @@ import {
   getProviderStatus,
   sortProviders,
 } from '../format'
+import { useI18n } from '../i18n'
 
 import type { DashboardResponse, ProviderSummary } from '../types'
 
@@ -41,6 +42,7 @@ export function ProvidersView({
   onDelete,
   onPrioritySave,
 }: ProvidersViewProps) {
+  const { messages } = useI18n()
   const [search, setSearch] = useState('')
   const [enabledOnly, setEnabledOnly] = useState(false)
   const [statusFilter, setStatusFilter] = useState<ProviderFilter>('all')
@@ -49,7 +51,7 @@ export function ProvidersView({
   const visibleProviders = sortProviders(dashboard.providers).filter((provider) => {
     const query = deferredSearch.trim().toLowerCase()
     const haystack = `${provider.name} ${provider.base_url} ${provider.models.join(' ')}`.toLowerCase()
-    const status = getProviderStatus(provider).label.toLowerCase()
+    const status = getProviderStatus(provider, messages).key
     const matchesSearch = haystack.includes(query)
     const matchesEnabled = !enabledOnly || provider.enabled
     const matchesStatus =
@@ -80,11 +82,11 @@ export function ProvidersView({
       <section className="surface-card">
         <div className="section-header">
           <div>
-            <span className="eyebrow">Providers</span>
-            <h2>Routing inventory</h2>
+            <span className="eyebrow">{messages.providers.eyebrow}</span>
+            <h2>{messages.providers.title}</h2>
           </div>
           <button type="button" className="accent-button" onClick={onCreate}>
-            Add provider
+            {messages.app.addProvider}
           </button>
         </div>
 
@@ -94,7 +96,7 @@ export function ProvidersView({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name, URL, or model"
+              placeholder={messages.providers.searchPlaceholder}
             />
           </label>
 
@@ -104,7 +106,7 @@ export function ProvidersView({
               checked={enabledOnly}
               onChange={(event) => setEnabledOnly(event.target.checked)}
             />
-            <span>Enabled only</span>
+            <span>{messages.providers.enabledOnly}</span>
           </label>
 
           <label className="select-field">
@@ -113,40 +115,40 @@ export function ProvidersView({
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as ProviderFilter)}
             >
-              <option value="all">All states</option>
-              <option value="ready">Ready</option>
-              <option value="cooling">Cooling</option>
-              <option value="disabled">Disabled</option>
-              <option value="unsteady">Unsteady</option>
+              <option value="all">{messages.providers.allStates}</option>
+              <option value="ready">{messages.providers.ready}</option>
+              <option value="cooling">{messages.providers.cooling}</option>
+              <option value="disabled">{messages.providers.disabled}</option>
+              <option value="unsteady">{messages.providers.unsteady}</option>
             </select>
           </label>
         </div>
 
         {visibleProviders.length === 0 ? (
           <div className="empty-state compact-empty">
-            <h3>No providers match the current filters</h3>
-            <p>Clear filters or add a new upstream relay to extend the routing pool.</p>
+            <h3>{messages.providers.emptyTitle}</h3>
+            <p>{messages.providers.emptyCopy}</p>
           </div>
         ) : (
           <div className="table-shell">
             <table className="data-table providers-table">
               <thead>
                 <tr>
-                  <th>Provider</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Models</th>
-                  <th>Health</th>
-                  <th>Traffic</th>
-                  <th>Reliability</th>
-                  <th>Last success</th>
-                  <th>Actions</th>
+                  <th>{messages.providers.provider}</th>
+                  <th>{messages.providers.status}</th>
+                  <th>{messages.providers.priority}</th>
+                  <th>{messages.providers.models}</th>
+                  <th>{messages.providers.health}</th>
+                  <th>{messages.providers.traffic}</th>
+                  <th>{messages.providers.reliability}</th>
+                  <th>{messages.providers.lastSuccess}</th>
+                  <th>{messages.providers.actions}</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleProviders.map((provider) => {
-                  const status = getProviderStatus(provider)
-                  const health = getHealthState(provider.healthcheck)
+                  const status = getProviderStatus(provider, messages)
+                  const health = getHealthState(provider.healthcheck, messages)
                   const stats = findProviderStats(dashboard.stats, provider.name)
                   return (
                     <tr key={provider.name}>
@@ -155,7 +157,7 @@ export function ProvidersView({
                           <div className="table-title-row">
                             <strong>{provider.name}</strong>
                             {dashboard.primary_provider === provider.name ? (
-                              <span className="pill pill-primary">Primary</span>
+                              <span className="pill pill-primary">{messages.providers.primary}</span>
                             ) : null}
                           </div>
                           <span>{provider.base_url}</span>
@@ -164,7 +166,7 @@ export function ProvidersView({
                       <td>
                         <div className="table-primary">
                           <span className={`pill pill-${status.tone}`}>{status.label}</span>
-                          <span>{provider.enabled ? 'Eligible for routing' : 'Ignored by router'}</span>
+                          <span>{provider.enabled ? messages.providers.eligibleForRouting : messages.providers.ignoredByRouter}</span>
                         </div>
                       </td>
                       <td>
@@ -188,21 +190,21 @@ export function ProvidersView({
                             disabled={busyAction !== null}
                           />
                           {busyAction === `priority:${provider.name}` ? (
-                            <span className="table-helper-text">Saving…</span>
+                            <span className="table-helper-text">{messages.providers.saving}</span>
                           ) : (
-                            <span className="table-helper-text">Blur to apply</span>
+                            <span className="table-helper-text">{messages.providers.blurToApply}</span>
                           )}
                         </div>
                       </td>
                       <td>
                         <div className="table-primary">
-                          <strong>{getModelsLabel(provider)}</strong>
+                          <strong>{getModelsLabel(provider, messages)}</strong>
                           <span>
                             {provider.healthcheck_model
-                              ? `Healthcheck: ${provider.healthcheck_model}`
+                              ? messages.providers.healthcheckLabel(provider.healthcheck_model)
                               : provider.supports_all_models
-                                ? 'Set a healthcheck model for wildcard checks'
-                                : 'Uses first explicit model by default'}
+                                ? messages.providers.wildcardHealthHint
+                                : messages.providers.firstExplicitModelHint}
                           </span>
                         </div>
                       </td>
@@ -211,24 +213,24 @@ export function ProvidersView({
                           <span className={`pill pill-${health.tone}`}>{health.label}</span>
                           <span>
                             {provider.healthcheck.checked_at
-                              ? `${provider.healthcheck.model ?? 'no model'} · ${provider.healthcheck.latency_ms ?? 'N/A'} ms`
-                              : 'No manual check yet'}
+                              ? `${provider.healthcheck.model ?? messages.app.noModel} · ${provider.healthcheck.latency_ms ?? messages.app.notAvailable} ms`
+                              : messages.providers.noManualCheckYet}
                           </span>
                         </div>
                       </td>
                       <td>
                         <div className="table-primary">
-                          <strong>{stats?.served_requests ?? 0} requests</strong>
-                          <span>{formatPercent(stats?.success_rate ?? null)} success</span>
+                          <strong>{messages.providers.requestsCount(stats?.served_requests ?? 0)}</strong>
+                          <span>{formatPercent(stats?.success_rate ?? null)} {messages.providers.successSuffix}</span>
                         </div>
                       </td>
                       <td>
                         <div className="table-primary">
                           <strong>
-                            {provider.consecutive_failures}/{provider.max_failures} failures
+                            {messages.providers.failuresCount(provider.consecutive_failures, provider.max_failures)}
                           </strong>
                           <span>
-                            {formatNumber(stats?.average_duration_ms ?? null)} ms avg · {provider.cooldown_seconds}s cooldown
+                            {messages.providers.avgWithCooldown(formatNumber(stats?.average_duration_ms ?? null), provider.cooldown_seconds)}
                           </span>
                         </div>
                       </td>
@@ -241,7 +243,7 @@ export function ProvidersView({
                             onClick={() => onEdit(provider)}
                             disabled={busyAction !== null}
                           >
-                            Edit
+                            {messages.providers.edit}
                           </button>
                           <button
                             type="button"
@@ -249,7 +251,7 @@ export function ProvidersView({
                             onClick={() => onHealthcheck(provider)}
                             disabled={busyAction !== null}
                           >
-                            {busyAction === `health:${provider.name}` ? 'Checking…' : 'Check'}
+                            {busyAction === `health:${provider.name}` ? messages.providers.checking : messages.providers.check}
                           </button>
                           <button
                             type="button"
@@ -257,7 +259,7 @@ export function ProvidersView({
                             onClick={() => onPromote(provider)}
                             disabled={busyAction !== null || dashboard.primary_provider === provider.name}
                           >
-                            {busyAction === `promote:${provider.name}` ? 'Switching…' : 'Primary'}
+                            {busyAction === `promote:${provider.name}` ? messages.providers.switching : messages.providers.makePrimary}
                           </button>
                           <button
                             type="button"
@@ -265,7 +267,7 @@ export function ProvidersView({
                             onClick={() => onToggle(provider)}
                             disabled={busyAction !== null}
                           >
-                            {busyAction === `toggle:${provider.name}` ? 'Saving…' : provider.enabled ? 'Disable' : 'Enable'}
+                            {busyAction === `toggle:${provider.name}` ? messages.providers.saving : provider.enabled ? messages.providers.disable : messages.providers.enable}
                           </button>
                           <button
                             type="button"
@@ -273,7 +275,7 @@ export function ProvidersView({
                             onClick={() => onDelete(provider)}
                             disabled={busyAction !== null}
                           >
-                            Delete
+                            {messages.providers.delete}
                           </button>
                         </div>
                       </td>

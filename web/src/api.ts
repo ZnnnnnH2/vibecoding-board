@@ -1,4 +1,27 @@
-import type { DashboardResponse, MutationResponse, ProviderFormState } from './types'
+import type {
+  DashboardResponse,
+  MetricsResponse,
+  MetricsWindow,
+  MutationResponse,
+  ProviderFormState,
+} from './types'
+import type { AppLocale } from './i18n'
+
+
+let currentLocale: AppLocale = 'en'
+
+
+export function setApiLocale(locale: AppLocale): void {
+  currentLocale = locale
+}
+
+
+function fallbackRequestError(status: number): string {
+  if (currentLocale === 'zh-CN') {
+    return `请求失败，状态码 ${status}`
+  }
+  return `Request failed with status ${status}`
+}
 
 
 function parseError(payload: unknown, fallback: string): string {
@@ -24,6 +47,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
       'Content-Type': 'application/json',
+      'X-Admin-Locale': currentLocale,
       ...(init?.headers ?? {}),
     },
     ...init,
@@ -36,7 +60,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       payload = null
     }
-    throw new Error(parseError(payload, `Request failed with status ${response.status}`))
+    throw new Error(parseError(payload, fallbackRequestError(response.status)))
   }
 
   return (await response.json()) as T
@@ -71,6 +95,10 @@ function buildProviderPayload(form: ProviderFormState) {
 export const api = {
   dashboard(signal?: AbortSignal): Promise<DashboardResponse> {
     return request<DashboardResponse>('/admin/api/dashboard', { signal })
+  },
+
+  metrics(window: MetricsWindow, signal?: AbortSignal): Promise<MetricsResponse> {
+    return request<MetricsResponse>(`/admin/api/metrics?window=${window}`, { signal })
   },
 
   createProvider(form: ProviderFormState): Promise<MutationResponse> {

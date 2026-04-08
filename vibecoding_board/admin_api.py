@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from vibecoding_board.admin_i18n import admin_message, resolve_admin_locale, translate_admin_error
 from vibecoding_board.config import ProviderConfig
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
@@ -115,8 +118,16 @@ def build_admin_router() -> APIRouter:
             get_request_log_store(request),
         )
 
+    @router.get("/metrics")
+    async def metrics(
+        request: Request,
+        window: Literal["24h", "7d"] = "24h",
+    ):
+        return await request.app.state.metrics_store.metrics_payload(window=window)
+
     @router.post("/providers")
     async def create_provider(payload: ProviderCreatePayload, request: Request):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         current = manager.current().config
@@ -126,8 +137,15 @@ def build_admin_router() -> APIRouter:
         try:
             await manager.add_provider(provider)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        return await mutation_response(manager, request_log_store, f"Added provider {provider.name}.")
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "added_provider", provider=provider.name),
+        )
 
     @router.put("/providers/{provider_name}")
     async def update_provider(
@@ -135,12 +153,16 @@ def build_admin_router() -> APIRouter:
         payload: ProviderUpdatePayload,
         request: Request,
     ):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         current = manager.current().config
         existing = next((provider for provider in current.providers if provider.name == provider_name), None)
         if existing is None:
-            raise HTTPException(status_code=404, detail=f"Provider {provider_name!r} does not exist.")
+            raise HTTPException(
+                status_code=404,
+                detail=admin_message(locale, "provider_not_found", provider=provider_name),
+            )
 
         replacement = payload.to_provider_config(
             default_priority=existing.priority,
@@ -149,8 +171,15 @@ def build_admin_router() -> APIRouter:
         try:
             await manager.update_provider(provider_name, replacement)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        return await mutation_response(manager, request_log_store, f"Updated provider {provider_name}.")
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "updated_provider", provider=provider_name),
+        )
 
     @router.patch("/providers/{provider_name}/priority")
     async def update_provider_priority(
@@ -158,61 +187,93 @@ def build_admin_router() -> APIRouter:
         payload: ProviderPriorityUpdatePayload,
         request: Request,
     ):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
             await manager.update_provider_priority(provider_name, payload.priority)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
         return await mutation_response(
             manager,
             request_log_store,
-            f"Updated priority for {provider_name}.",
+            admin_message(locale, "updated_priority", provider=provider_name),
         )
 
     @router.post("/providers/{provider_name}/promote")
     async def promote_provider(provider_name: str, request: Request):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
             await manager.promote_provider(provider_name)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        return await mutation_response(manager, request_log_store, f"Promoted provider {provider_name}.")
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "promoted_provider", provider=provider_name),
+        )
 
     @router.post("/providers/{provider_name}/toggle")
     async def toggle_provider(provider_name: str, request: Request):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
             await manager.toggle_provider(provider_name)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        return await mutation_response(manager, request_log_store, f"Toggled provider {provider_name}.")
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "toggled_provider", provider=provider_name),
+        )
 
     @router.post("/providers/{provider_name}/healthcheck")
     async def healthcheck_provider(provider_name: str, request: Request):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
             result = await request.app.state.service.run_provider_healthcheck(provider_name)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        tone = "passed" if result["ok"] else "failed"
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        message_key = "healthcheck_passed" if result["ok"] else "healthcheck_failed"
         return await mutation_response(
             manager,
             request_log_store,
-            f"Health check {tone} for {provider_name}.",
+            admin_message(locale, message_key, provider=provider_name),
         )
 
     @router.delete("/providers/{provider_name}")
     async def delete_provider(provider_name: str, request: Request):
+        locale = resolve_admin_locale(request)
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
             await manager.delete_provider(provider_name)
         except RuntimeMutationError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-        return await mutation_response(manager, request_log_store, f"Deleted provider {provider_name}.")
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "deleted_provider", provider=provider_name),
+        )
 
     return router

@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n'
+
 type ConfirmDialogProps = {
   open: boolean
   title: string
@@ -15,6 +17,7 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
+  const { messages } = useI18n()
   if (!open) return null
 
   return (
@@ -25,15 +28,15 @@ export function ConfirmDialog({
         aria-modal="true" 
         aria-label={title}
       >
-        <span className="eyebrow">Confirm action</span>
+        <span className="eyebrow">{messages.confirm.eyebrow}</span>
         <h3>{title}</h3>
         <p>{description}</p>
         <div className="confirm-actions">
           <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>
-            Cancel
+            {messages.confirm.cancel}
           </button>
           <button type="button" className="danger-button" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Deleting...' : 'Delete provider'}
+            {busy ? messages.confirm.deleteBusy : messages.confirm.deleteProvider}
           </button>
         </div>
       </div>

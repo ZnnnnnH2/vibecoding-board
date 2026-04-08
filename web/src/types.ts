@@ -86,6 +86,47 @@ export type DashboardResponse = {
   }
 }
 
+export type MetricsWindow = '24h' | '7d'
+
+export type MetricsPoint = {
+  bucket_start: string
+  value: number | null
+}
+
+export type ProviderBreakdown = {
+  provider_name: string
+  requests: number
+  total_tokens: number
+}
+
+export type StateBreakdown = {
+  state: 'success' | 'interrupted' | 'error'
+  count: number
+}
+
+export type MetricsResponse = {
+  window: MetricsWindow
+  metrics_path: string
+  last_flushed_at: string | null
+  summary: {
+    requests: number
+    total_tokens: number
+    average_duration_ms: number | null
+    success_rate: number | null
+  }
+  timeseries: {
+    requests: MetricsPoint[]
+    tokens: MetricsPoint[]
+    duration_ms: MetricsPoint[]
+    success_rate: MetricsPoint[]
+    average_ttfb_ms: MetricsPoint[]
+  }
+  breakdowns: {
+    providers: ProviderBreakdown[]
+    states: StateBreakdown[]
+  }
+}
+
 export type MutationResponse = {
   message: string
   dashboard: DashboardResponse

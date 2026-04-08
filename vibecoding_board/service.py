@@ -12,6 +12,7 @@ import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from vibecoding_board.admin_metrics import AdminMetricsStore
 from vibecoding_board.config import ConfigError
 from vibecoding_board.request_log import AttemptLogEntry, RequestLogStore
 from vibecoding_board.request_log import UsageLogEntry
@@ -139,10 +140,12 @@ class ProxyService:
         *,
         runtime_manager: RuntimeManager,
         request_log_store: RequestLogStore,
+        metrics_store: AdminMetricsStore,
         client: httpx.AsyncClient,
     ) -> None:
         self.runtime_manager = runtime_manager
         self.request_log_store = request_log_store
+        self.metrics_store = metrics_store
         self.client = client
 
     async def run_provider_healthcheck(self, provider_name: str) -> dict[str, object]:
@@ -340,7 +343,7 @@ class ProxyService:
             await registry.mark_success(provider.name)
             duration_ms = int((perf_counter() - started_at) * 1000)
             usage = self._extract_usage_from_response(response)
-            await self.request_log_store.complete(
+            await self._finalize_request(
                 log_id,
                 final_provider=provider.name,
                 final_url=url,
@@ -358,7 +361,7 @@ class ProxyService:
                 headers=normalize_response_headers(response.headers),
             )
 
-        await self.request_log_store.complete(
+        await self._finalize_request(
             log_id,
             final_provider=None,
             final_url=None,
@@ -438,7 +441,7 @@ class ProxyService:
                 await response.aclose()
                 duration_ms = int((perf_counter() - started_at) * 1000)
                 usage = self._extract_usage_from_bytes(body_bytes)
-                await self.request_log_store.complete(
+                await self._finalize_request(
                     log_id,
                     final_provider=provider.name,
                     final_url=url,
@@ -493,7 +496,7 @@ class ProxyService:
                 headers=normalize_response_headers(response.headers),
             )
 
-        await self.request_log_store.complete(
+        await self._finalize_request(
             log_id,
             final_provider=None,
             final_url=None,
@@ -554,7 +557,7 @@ class ProxyService:
             await response.aclose()
             if completed:
                 await registry.mark_success(provider.name)
-            await self.request_log_store.complete(
+            await self._finalize_request(
                 log_id,
                 final_provider=provider.name,
                 final_url=final_url,
@@ -566,6 +569,40 @@ class ProxyService:
                 usage=usage,
                 attempts=attempts,
             )
+
+    async def _finalize_request(
+        self,
+        entry_id: str,
+        *,
+        final_provider: str | None,
+        final_url: str | None,
+        status_code: int | None,
+        duration_ms: int,
+        ttfb_ms: int | None,
+        state: str,
+        error: str | None,
+        usage: UsageLogEntry | None,
+        attempts: list[AttemptLogEntry],
+    ) -> None:
+        await self.request_log_store.complete(
+            entry_id,
+            final_provider=final_provider,
+            final_url=final_url,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            ttfb_ms=ttfb_ms,
+            state=state,
+            error=error,
+            usage=usage,
+            attempts=attempts,
+        )
+        await self.metrics_store.record_request(
+            final_provider=final_provider,
+            state=state,
+            duration_ms=duration_ms,
+            ttfb_ms=ttfb_ms,
+            usage=usage,
+        )
 
     @staticmethod
     def _load_json_payload(body: bytes) -> dict[str, object]:

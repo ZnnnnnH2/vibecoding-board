@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react'
 
+import { useI18n } from '../i18n'
 import type { ProviderFormState } from '../types'
 
 type ProviderDrawerProps = {
@@ -21,7 +22,8 @@ export function ProviderDrawer({
   onChange,
   onSubmit,
 }: ProviderDrawerProps) {
-  const submitLabel = mode === 'create' ? 'Add provider' : 'Save changes'
+  const { messages } = useI18n()
+  const submitLabel = mode === 'create' ? messages.drawer.addProvider : messages.drawer.saveChanges
 
   function update<K extends keyof ProviderFormState>(key: K, value: ProviderFormState[K]) {
     onChange({
@@ -42,11 +44,11 @@ export function ProviderDrawer({
       <aside className="drawer-panel">
         <div className="drawer-header">
           <div>
-            <span className="eyebrow">{mode === 'create' ? 'New upstream' : 'Edit upstream'}</span>
-            <h2>{mode === 'create' ? 'Add a provider' : 'Refine provider details'}</h2>
+            <span className="eyebrow">{mode === 'create' ? messages.drawer.newUpstream : messages.drawer.editUpstream}</span>
+            <h2>{mode === 'create' ? messages.drawer.addProvider : messages.drawer.refineProviderDetails}</h2>
           </div>
           <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-            Close
+            {messages.drawer.close}
           </button>
         </div>
 
@@ -54,48 +56,44 @@ export function ProviderDrawer({
           <section className="drawer-section">
             <div className="drawer-section-header">
               <div>
-                <span className="eyebrow">Identity</span>
-                <h3>Connection details</h3>
+                <span className="eyebrow">{messages.drawer.identityEyebrow}</span>
+                <h3>{messages.drawer.connectionDetails}</h3>
               </div>
-              <p className="drawer-section-copy">
-                These values define the upstream relay and the credential this proxy should use.
-              </p>
+              <p className="drawer-section-copy">{messages.drawer.identityCopy}</p>
             </div>
 
             <div className="drawer-field-grid">
               <label>
-                <span>Name</span>
+                <span>{messages.drawer.name}</span>
                 <input
                   value={form.name}
                   onChange={(event) => update('name', event.target.value)}
-                  placeholder="relay_primary"
+                  placeholder={messages.drawer.namePlaceholder}
                   required
                 />
-                <small className="field-hint">Stable identifier shown in the dashboard and routing logs.</small>
+                <small className="field-hint">{messages.drawer.nameHint}</small>
               </label>
 
               <label>
-                <span>Base URL</span>
+                <span>{messages.drawer.baseUrl}</span>
                 <input
                   value={form.baseUrl}
                   onChange={(event) => update('baseUrl', event.target.value)}
-                  placeholder="https://relay.example.com/v1"
+                  placeholder={messages.drawer.baseUrlPlaceholder}
                   required
                 />
-                <small className="field-hint">Use the upstream API root, usually ending with `/v1`.</small>
+                <small className="field-hint">{messages.drawer.baseUrlHint}</small>
               </label>
 
               <label className="drawer-field-span">
-                <span>API key</span>
+                <span>{messages.drawer.apiKey}</span>
                 <input
                   value={form.apiKey}
                   onChange={(event) => update('apiKey', event.target.value)}
-                  placeholder={mode === 'edit' ? 'Leave blank to keep existing key' : 'sk-... or env:VAR_NAME'}
+                  placeholder={mode === 'edit' ? messages.drawer.apiKeyEditPlaceholder : messages.drawer.apiKeyCreatePlaceholder}
                   required={mode === 'create'}
                 />
-                <small className="field-hint">
-                  Supports direct secrets or environment references such as `env:RELAY_A_API_KEY`.
-                </small>
+                <small className="field-hint">{messages.drawer.apiKeyHint}</small>
               </label>
             </div>
 
@@ -105,24 +103,22 @@ export function ProviderDrawer({
                 checked={form.enabled}
                 onChange={(event) => update('enabled', event.target.checked)}
               />
-              <span>Enable this provider immediately after save</span>
+              <span>{messages.drawer.enableAfterSave}</span>
             </label>
           </section>
 
           <section className="drawer-section">
             <div className="drawer-section-header">
               <div>
-                <span className="eyebrow">Routing</span>
-                <h3>Selection rules</h3>
+                <span className="eyebrow">{messages.drawer.routingEyebrow}</span>
+                <h3>{messages.drawer.selectionRules}</h3>
               </div>
-              <p className="drawer-section-copy">
-                Lower priority numbers win. Model scope controls which requests can route here.
-              </p>
+              <p className="drawer-section-copy">{messages.drawer.routingCopy}</p>
             </div>
 
             <div className="drawer-field-grid">
               <label>
-                <span>Priority</span>
+                <span>{messages.drawer.priority}</span>
                 <input
                   type="number"
                   min="1"
@@ -131,19 +127,17 @@ export function ProviderDrawer({
                   onChange={(event) => update('priority', event.target.value)}
                   required
                 />
-                <small className="field-hint">Example: `10` before `20`.</small>
+                <small className="field-hint">{messages.drawer.priorityHint}</small>
               </label>
 
               <label>
-                <span>Healthcheck model</span>
+                <span>{messages.drawer.healthcheckModel}</span>
                 <input
                   value={form.healthcheckModel}
                   onChange={(event) => update('healthcheckModel', event.target.value)}
-                  placeholder={form.modelMode === 'all' ? 'Required for wildcard providers' : 'Optional override'}
+                  placeholder={form.modelMode === 'all' ? messages.drawer.wildcardPlaceholder : messages.drawer.healthcheckPlaceholder}
                 />
-                <small className="field-hint">
-                  Used by manual checks when the provider does not expose an explicit model list.
-                </small>
+                <small className="field-hint">{messages.drawer.healthcheckHint}</small>
               </label>
             </div>
 
@@ -153,33 +147,33 @@ export function ProviderDrawer({
                 className={form.modelMode === 'all' ? 'segment-active' : ''}
                 onClick={() => update('modelMode', 'all')}
               >
-                All models
+                {messages.drawer.allModels}
               </button>
               <button
                 type="button"
                 className={form.modelMode === 'explicit' ? 'segment-active' : ''}
                 onClick={() => update('modelMode', 'explicit')}
               >
-                Explicit list
+                {messages.drawer.explicitList}
               </button>
             </div>
 
             {form.modelMode === 'explicit' ? (
               <label>
-                <span>Models</span>
+                <span>{messages.drawer.models}</span>
                 <textarea
                   rows={6}
                   value={form.modelText}
                   onChange={(event) => update('modelText', event.target.value)}
-                  placeholder={'One model per line\nexample: gpt-4.1\ngpt-4o-mini'}
+                  placeholder={messages.drawer.modelsPlaceholder}
                   required
                 />
-                <small className="field-hint">One model per line. Only listed models will route here.</small>
+                <small className="field-hint">{messages.drawer.modelsHint}</small>
               </label>
             ) : (
               <div className="form-hint-panel">
-                <span className="meta-label">Wildcard routing</span>
-                <p>This provider can serve any incoming model name. Set a healthcheck model for manual tests.</p>
+                <span className="meta-label">{messages.drawer.wildcardRouting}</span>
+                <p>{messages.drawer.wildcardRoutingCopy}</p>
               </div>
             )}
           </section>
@@ -187,17 +181,15 @@ export function ProviderDrawer({
           <section className="drawer-section">
             <div className="drawer-section-header">
               <div>
-                <span className="eyebrow">Reliability</span>
-                <h3>Timeout and failover</h3>
+                <span className="eyebrow">{messages.drawer.reliabilityEyebrow}</span>
+                <h3>{messages.drawer.timeoutAndFailover}</h3>
               </div>
-              <p className="drawer-section-copy">
-                These values control when the proxy marks an upstream unhealthy and how long it waits to retry.
-              </p>
+              <p className="drawer-section-copy">{messages.drawer.reliabilityCopy}</p>
             </div>
 
             <div className="drawer-field-grid">
               <label>
-                <span>Timeout (seconds)</span>
+                <span>{messages.drawer.timeout}</span>
                 <input
                   type="number"
                   min="1"
@@ -209,7 +201,7 @@ export function ProviderDrawer({
               </label>
 
               <label>
-                <span>Max failures</span>
+                <span>{messages.drawer.maxFailures}</span>
                 <input
                   type="number"
                   min="1"
@@ -221,7 +213,7 @@ export function ProviderDrawer({
               </label>
 
               <label>
-                <span>Cooldown (seconds)</span>
+                <span>{messages.drawer.cooldown}</span>
                 <input
                   type="number"
                   min="0"
@@ -236,10 +228,10 @@ export function ProviderDrawer({
 
           <div className="drawer-footer">
             <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-              Cancel
+              {messages.drawer.cancel}
             </button>
             <button type="submit" className="accent-button" disabled={busy}>
-              {busy ? 'Saving...' : submitLabel}
+              {busy ? messages.drawer.saving : submitLabel}
             </button>
           </div>
         </form>

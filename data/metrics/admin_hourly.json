@@ -1,0 +1,28 @@
+{
+  "last_flushed_at": "2026-04-08T08:56:53.029666+08:00",
+  "retention_hours": 720,
+  "buckets": [
+    {
+      "bucket_start": "2026-04-08T08:00:00+08:00",
+      "requests": 19,
+      "success_count": 17,
+      "interrupted_count": 2,
+      "error_count": 0,
+      "total_tokens": 3856424,
+      "duration_sum_ms": 338056,
+      "duration_count": 19,
+      "ttfb_sum_ms": 82292,
+      "ttfb_count": 19,
+      "providers": {
+        "relay_asxs": {
+          "requests": 14,
+          "total_tokens": 3755241
+        },
+        "relay_998": {
+          "requests": 5,
+          "total_tokens": 101183
+        }
+      }
+    }
+  ]
+}

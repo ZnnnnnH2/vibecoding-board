@@ -10,61 +10,90 @@ import {
 } from 'lucide-react'
 
 import {
+  DistributionBarCard,
+  DonutCard,
+  DualTrendCard,
+  LineTrendCard,
+} from './MetricsCharts'
+import {
   findProviderStats,
   formatNumber,
   formatPercent,
   formatTimestamp,
   getHealthState,
   getProviderStatus,
+  getRequestStateLabel,
   requestHeadline,
   sortProviders,
 } from '../format'
+import { useI18n } from '../i18n'
 
-import type { DashboardResponse } from '../types'
+import type { DashboardResponse, MetricsResponse, MetricsWindow } from '../types'
 
 
 type OverviewViewProps = {
   dashboard: DashboardResponse
+  metrics: MetricsResponse | null
+  metricsWindow: MetricsWindow
   proxyBase: string
   loading: boolean
+  onMetricsWindowChange: (window: MetricsWindow) => void
   onNavigate: (view: 'providers' | 'traffic') => void
 }
 
 
 export function OverviewView({
   dashboard,
+  metrics,
+  metricsWindow,
   proxyBase,
   loading,
+  onMetricsWindowChange,
   onNavigate,
 }: OverviewViewProps) {
+  const { messages } = useI18n()
   const sortedProviders = sortProviders(dashboard.providers)
   const recentPreview = dashboard.recent_requests.slice(0, 5)
+  const stateItems = [
+    {
+      state: 'success' as const,
+      count: metrics?.breakdowns.states.find((item) => item.state === 'success')?.count ?? 0,
+      label: messages.requestState.success,
+      color: 'var(--success)',
+    },
+    {
+      state: 'interrupted' as const,
+      count: metrics?.breakdowns.states.find((item) => item.state === 'interrupted')?.count ?? 0,
+      label: messages.requestState.interrupted,
+      color: 'var(--warning)',
+    },
+    {
+      state: 'error' as const,
+      count: metrics?.breakdowns.states.find((item) => item.state === 'error')?.count ?? 0,
+      label: messages.requestState.failed,
+      color: 'var(--danger)',
+    },
+  ]
 
   return (
     <div className="page-stack">
       <section className="hero-surface">
         <div className="hero-copy">
-          <span className="eyebrow">Overview</span>
-          <h1>Local proxy control plane</h1>
-          <p>
-            One screen for routing health, current primary selection, and recent request behavior
-            across your OpenAI-compatible upstream providers.
-          </p>
+          <span className="eyebrow">{messages.overview.eyebrow}</span>
+          <h1>{messages.overview.heroTitle}</h1>
+          <p>{messages.overview.heroCopy}</p>
         </div>
 
         <div className="hero-callout">
-          <div className="surface-label">Current endpoint</div>
+          <div className="surface-label">{messages.overview.currentEndpoint}</div>
           <strong>{proxyBase}</strong>
-          <p>
-            Requests hit the local proxy first. Routing, failover, and runtime config changes are
-            applied from here.
-          </p>
+          <p>{messages.overview.currentEndpointCopy}</p>
           <button
             type="button"
             className="ghost-button"
             onClick={() => onNavigate('providers')}
           >
-            Manage providers
+            {messages.overview.manageProviders}
             <ArrowRight size={16} />
           </button>
         </div>
@@ -73,86 +102,166 @@ export function OverviewView({
       <section className="kpi-grid">
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Primary provider</span>
+            <span className="surface-label">{messages.overview.primaryProvider}</span>
             <ShieldCheck size={16} />
           </div>
-          <strong>{dashboard.primary_provider ?? 'None selected'}</strong>
-          <p>Lowest healthy priority currently serving new traffic.</p>
+          <strong>{dashboard.primary_provider ?? messages.app.noSelectedProvider}</strong>
+          <p>{messages.overview.primaryProviderCopy}</p>
         </article>
 
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Providers</span>
+            <span className="surface-label">{messages.overview.providers}</span>
             <Boxes size={16} />
           </div>
           <strong>{dashboard.providers.length}</strong>
-          <p>Configured upstream relays available to the proxy runtime.</p>
+          <p>{messages.overview.providersCopy}</p>
         </article>
 
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Success rate</span>
+            <span className="surface-label">{messages.overview.successRate}</span>
             <Activity size={16} />
           </div>
           <strong>{formatPercent(dashboard.stats.global.success_rate)}</strong>
-          <p>Computed from recent in-memory request logs.</p>
+          <p>{messages.overview.successRateCopy}</p>
         </article>
 
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Avg latency</span>
+            <span className="surface-label">{messages.overview.avgLatency}</span>
             <Timer size={16} />
           </div>
           <strong>{formatNumber(dashboard.stats.global.average_duration_ms)} ms</strong>
-          <p>Total request duration across successfully served traffic.</p>
+          <p>{messages.overview.avgLatencyCopy}</p>
         </article>
 
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Avg first byte</span>
+            <span className="surface-label">{messages.overview.avgFirstByte}</span>
             <Gauge size={16} />
           </div>
           <strong>{formatNumber(dashboard.stats.global.average_ttfb_ms)} ms</strong>
-          <p>How quickly upstreams begin returning tokens or response content.</p>
+          <p>{messages.overview.avgFirstByteCopy}</p>
         </article>
 
         <article className="kpi-card">
           <div className="kpi-head">
-            <span className="surface-label">Served requests</span>
+            <span className="surface-label">{messages.overview.servedRequests}</span>
             <Waves size={16} />
           </div>
           <strong>{dashboard.stats.global.served_requests}</strong>
-          <p>Transient history only. These rows are cleared when the process restarts.</p>
+          <p>{messages.overview.servedRequestsCopy}</p>
         </article>
+      </section>
+
+      <section className="surface-card">
+        <div className="section-header">
+          <div>
+            <span className="eyebrow">{messages.overview.chartsEyebrow}</span>
+            <h2>{messages.overview.chartsTitle}</h2>
+          </div>
+
+          <div className="window-switch">
+            <button
+              type="button"
+              className={metricsWindow === '24h' ? 'window-switch-active' : ''}
+              onClick={() => onMetricsWindowChange('24h')}
+            >
+              {messages.overview.window24h}
+            </button>
+            <button
+              type="button"
+              className={metricsWindow === '7d' ? 'window-switch-active' : ''}
+              onClick={() => onMetricsWindowChange('7d')}
+            >
+              {messages.overview.window7d}
+            </button>
+          </div>
+        </div>
+
+        {metrics == null ? (
+          <div className="empty-inline">
+            <LoaderCircle size={16} />
+            <span>{messages.overview.metricsUnavailable}</span>
+          </div>
+        ) : (
+          <div className="charts-grid">
+            <LineTrendCard
+              title={messages.overview.requestsTrendTitle}
+              description={messages.overview.requestsTrendCopy}
+              points={metrics.timeseries.requests}
+              latestLabel={messages.overview.latestRequests}
+              color="var(--accent)"
+              icon="requests"
+            />
+            <LineTrendCard
+              title={messages.overview.tokensTrendTitle}
+              description={messages.overview.tokensTrendCopy}
+              points={metrics.timeseries.tokens}
+              latestLabel={messages.overview.latestTokens}
+              color="#0ea5e9"
+              icon="tokens"
+            />
+            <LineTrendCard
+              title={messages.overview.durationTrendTitle}
+              description={messages.overview.durationTrendCopy}
+              points={metrics.timeseries.duration_ms}
+              latestLabel={messages.overview.latestDuration}
+              color="#8b5cf6"
+              icon="duration"
+            />
+            <DualTrendCard
+              title={messages.overview.reliabilityTrendTitle}
+              description={messages.overview.reliabilityTrendCopy}
+              primaryPoints={metrics.timeseries.success_rate}
+              primaryLabel={messages.overview.successRate}
+              primaryColor="var(--success)"
+              secondaryPoints={metrics.timeseries.duration_ms}
+              secondaryLabel={messages.overview.avgLatency}
+              secondaryColor="var(--warning)"
+            />
+            <DistributionBarCard
+              title={messages.overview.providerLoadTitle}
+              description={messages.overview.providerLoadCopy}
+              items={metrics.breakdowns.providers}
+            />
+            <DonutCard
+              title={messages.overview.stateDistributionTitle}
+              description={messages.overview.stateDistributionCopy}
+              items={stateItems}
+            />
+          </div>
+        )}
       </section>
 
       <section className="split-grid">
         <article className="surface-card">
           <div className="section-header">
             <div>
-              <span className="eyebrow">Runtime</span>
-              <h2>Proxy status</h2>
+              <span className="eyebrow">{messages.overview.runtimeEyebrow}</span>
+              <h2>{messages.overview.proxyStatus}</h2>
             </div>
-            {loading ? <span className="status-dot status-dot-live">Syncing</span> : <span className="status-dot">Synced</span>}
+            {loading ? <span className="status-dot status-dot-live">{messages.overview.syncing}</span> : <span className="status-dot">{messages.overview.synced}</span>}
           </div>
 
           <div className="runtime-grid">
             <div className="runtime-card">
-              <span className="surface-label">Listen address</span>
+              <span className="surface-label">{messages.overview.listenAddress}</span>
               <strong>
                 {dashboard.listen_host}:{dashboard.listen_port}
               </strong>
             </div>
             <div className="runtime-card">
-              <span className="surface-label">Config path</span>
+              <span className="surface-label">{messages.app.configPath}</span>
               <strong>{dashboard.config_path}</strong>
             </div>
             <div className="runtime-card">
-              <span className="surface-label">Last reload</span>
+              <span className="surface-label">{messages.overview.lastReload}</span>
               <strong>{formatTimestamp(dashboard.reloaded_at)}</strong>
             </div>
             <div className="runtime-card">
-              <span className="surface-label">Usage rows</span>
+              <span className="surface-label">{messages.overview.usageRows}</span>
               <strong>{dashboard.stats.global.requests_with_usage}</strong>
             </div>
           </div>
@@ -161,15 +270,15 @@ export function OverviewView({
         <article className="surface-card">
           <div className="section-header">
             <div>
-              <span className="eyebrow">Traffic</span>
-              <h2>Recent preview</h2>
+              <span className="eyebrow">{messages.overview.trafficEyebrow}</span>
+              <h2>{messages.overview.recentPreview}</h2>
             </div>
             <button
               type="button"
               className="ghost-button"
               onClick={() => onNavigate('traffic')}
             >
-              Open traffic
+              {messages.overview.openTraffic}
               <ArrowRight size={16} />
             </button>
           </div>
@@ -177,7 +286,7 @@ export function OverviewView({
           {recentPreview.length === 0 ? (
             <div className="empty-inline">
               <LoaderCircle size={16} />
-              <span>No requests yet. Recent routing records will appear here.</span>
+              <span>{messages.overview.noRequestsYet}</span>
             </div>
           ) : (
             <div className="list-stack">
@@ -189,12 +298,12 @@ export function OverviewView({
                   onClick={() => onNavigate('traffic')}
                 >
                   <div>
-                    <strong>{requestHeadline(request)}</strong>
-                    <span>{request.final_provider ?? 'No provider selected'}</span>
+                    <strong>{requestHeadline(request, messages)}</strong>
+                    <span>{request.final_provider ?? messages.traffic.noProviderSelected}</span>
                   </div>
                   <div className="compact-row-side">
                     <span className={`pill pill-${request.state === 'success' ? 'emerald' : request.state === 'interrupted' ? 'amber' : 'rose'}`}>
-                      {request.state}
+                      {getRequestStateLabel(request.state, messages)}
                     </span>
                     <small>{formatTimestamp(request.created_at)}</small>
                   </div>
@@ -208,15 +317,15 @@ export function OverviewView({
       <section className="surface-card">
         <div className="section-header">
           <div>
-            <span className="eyebrow">Providers</span>
-            <h2>Health snapshot</h2>
+            <span className="eyebrow">{messages.overview.providersEyebrow}</span>
+            <h2>{messages.overview.healthSnapshot}</h2>
           </div>
           <button
             type="button"
             className="ghost-button"
             onClick={() => onNavigate('providers')}
           >
-            Open providers
+            {messages.overview.openProviders}
             <ArrowRight size={16} />
           </button>
         </div>
@@ -225,19 +334,19 @@ export function OverviewView({
           <table className="data-table">
             <thead>
               <tr>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Healthcheck</th>
-                <th>Requests</th>
-                <th>Avg latency</th>
-                <th>Last success</th>
+                <th>{messages.providers.provider}</th>
+                <th>{messages.providers.status}</th>
+                <th>{messages.providers.priority}</th>
+                <th>{messages.overview.healthcheck}</th>
+                <th>{messages.overview.requests}</th>
+                <th>{messages.overview.avgLatencyColumn}</th>
+                <th>{messages.overview.lastSuccess}</th>
               </tr>
             </thead>
             <tbody>
               {sortedProviders.map((provider) => {
-                const status = getProviderStatus(provider)
-                const health = getHealthState(provider.healthcheck)
+                const status = getProviderStatus(provider, messages)
+                const health = getHealthState(provider.healthcheck, messages)
                 const stats = findProviderStats(dashboard.stats, provider.name)
                 return (
                   <tr key={provider.name}>
@@ -256,8 +365,8 @@ export function OverviewView({
                         <span className={`pill pill-${health.tone}`}>{health.label}</span>
                         <span>
                           {provider.healthcheck.checked_at
-                            ? `${provider.healthcheck.model ?? 'no model'} · ${provider.healthcheck.latency_ms ?? 'N/A'} ms`
-                            : 'No manual check'}
+                            ? `${provider.healthcheck.model ?? messages.app.noModel} · ${provider.healthcheck.latency_ms ?? messages.app.notAvailable} ms`
+                            : messages.overview.noManualCheck}
                         </span>
                       </div>
                     </td>

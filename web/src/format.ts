@@ -5,6 +5,7 @@ import type {
   ProviderSummary,
   RecentRequest,
 } from './types'
+import type { AppMessages } from './i18n'
 
 
 export function formatTimestamp(value: string | null): string {
@@ -37,43 +38,60 @@ export function formatNumber(value: number | null): string {
 }
 
 
-export function requestHeadline(request: RecentRequest): string {
-  return `${request.request_kind === 'chat' ? 'Chat' : 'Response'} · ${request.model}`
+export function requestHeadline(request: RecentRequest, messages: AppMessages): string {
+  return `${request.request_kind === 'chat' ? messages.traffic.chat : messages.traffic.response} · ${request.model}`
 }
 
 
-export function getProviderStatus(provider: ProviderSummary): { label: string; tone: string } {
+export function getProviderStatus(
+  provider: ProviderSummary,
+  messages: AppMessages,
+): { key: 'disabled' | 'cooling' | 'unsteady' | 'ready'; label: string; tone: string } {
   if (!provider.enabled) {
-    return { label: 'Disabled', tone: 'slate' }
+    return { key: 'disabled', label: messages.providerStatus.disabled, tone: 'slate' }
   }
 
   if (provider.cooldown_until && new Date(provider.cooldown_until).getTime() > Date.now()) {
-    return { label: 'Cooling', tone: 'amber' }
+    return { key: 'cooling', label: messages.providerStatus.cooling, tone: 'amber' }
   }
 
   if (provider.consecutive_failures > 0) {
-    return { label: 'Unsteady', tone: 'rose' }
+    return { key: 'unsteady', label: messages.providerStatus.unsteady, tone: 'rose' }
   }
 
-  return { label: 'Ready', tone: 'emerald' }
+  return { key: 'ready', label: messages.providerStatus.ready, tone: 'emerald' }
 }
 
 
-export function getHealthState(healthcheck: HealthcheckSummary): { label: string; tone: string } {
+export function getHealthState(
+  healthcheck: HealthcheckSummary,
+  messages: AppMessages,
+): { key: 'not_checked' | 'healthy' | 'failed'; label: string; tone: string } {
   if (healthcheck.ok == null) {
-    return { label: 'Not checked', tone: 'slate' }
+    return { key: 'not_checked', label: messages.healthStatus.notChecked, tone: 'slate' }
   }
 
   if (healthcheck.ok) {
-    return { label: 'Healthy', tone: 'emerald' }
+    return { key: 'healthy', label: messages.healthStatus.healthy, tone: 'emerald' }
   }
 
-  return { label: 'Failed', tone: 'rose' }
+  return { key: 'failed', label: messages.healthStatus.failed, tone: 'rose' }
 }
 
 
-export function getModelsLabel(provider: ProviderSummary): string {
-  return provider.supports_all_models ? 'All models' : provider.models.join(', ')
+export function getModelsLabel(provider: ProviderSummary, messages: AppMessages): string {
+  return provider.supports_all_models ? messages.providers.allModels : provider.models.join(', ')
+}
+
+
+export function getRequestStateLabel(state: RecentRequest['state'], messages: AppMessages): string {
+  if (state === 'success') {
+    return messages.requestState.success
+  }
+  if (state === 'interrupted') {
+    return messages.requestState.interrupted
+  }
+  return messages.requestState.failed
 }
 
 

@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Cable,
+  Globe2,
   LayoutDashboard,
   MoonStar,
   Plus,
@@ -9,18 +10,32 @@ import {
   SunMedium,
 } from 'lucide-react'
 
-import { api } from './api'
+import { api, setApiLocale } from './api'
 import { formatTimestamp } from './format'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { OverviewView } from './components/OverviewView'
 import { ProviderDrawer } from './components/ProviderDrawer'
 import { ProvidersView } from './components/ProvidersView'
 import { TrafficView } from './components/TrafficView'
+import {
+  I18nContext,
+  loadLocalePreference,
+  messagesByLocale,
+  resolveLocale,
+  saveLocalePreference,
+} from './i18n'
 
-import type { DashboardResponse, ProviderFormState, ProviderSummary } from './types'
-
+import type {
+  DashboardResponse,
+  MetricsResponse,
+  MetricsWindow,
+  ProviderFormState,
+  ProviderSummary,
+} from './types'
+import type { LocalePreference } from './i18n'
 
 type AdminView = 'overview' | 'providers' | 'traffic'
+
 
 const emptyForm: ProviderFormState = {
   name: '',
@@ -34,21 +49,6 @@ const emptyForm: ProviderFormState = {
   timeoutSeconds: '60',
   maxFailures: '3',
   cooldownSeconds: '30',
-}
-
-const viewMeta: Record<AdminView, { title: string; description: string }> = {
-  overview: {
-    title: 'Overview',
-    description: 'Global runtime status, provider health, and recent traffic signals.',
-  },
-  providers: {
-    title: 'Providers',
-    description: 'Operational workspace for routing priority, health checks, and hot updates.',
-  },
-  traffic: {
-    title: 'Traffic',
-    description: 'Inspect recent request routing outcomes, failover attempts, and timing data.',
-  },
 }
 
 
@@ -83,6 +83,8 @@ function createProviderForm(dashboard: DashboardResponse | null): ProviderFormSt
 
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
+  const [metricsWindow, setMetricsWindow] = useState<MetricsWindow>('24h')
   const [currentView, setCurrentView] = useState<AdminView>('overview')
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | null>(null)
   const [editingProvider, setEditingProvider] = useState<ProviderSummary | null>(null)
@@ -92,13 +94,38 @@ export default function App() {
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [deletingProvider, setDeletingProvider] = useState<ProviderSummary | null>(null)
   const [theme, setTheme] = useState<'dark' | 'light'>('light')
+  const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
   const activeRequestControllerRef = useRef<AbortController | null>(null)
+  const locale = resolveLocale(localePreference)
+  const messages = messagesByLocale[locale]
 
-  const meta = viewMeta[currentView]
+  const meta =
+    currentView === 'overview'
+      ? {
+          title: messages.viewMeta.overviewTitle,
+          description: messages.viewMeta.overviewDescription,
+        }
+      : currentView === 'providers'
+        ? {
+            title: messages.viewMeta.providersTitle,
+            description: messages.viewMeta.providersDescription,
+          }
+        : {
+            title: messages.viewMeta.trafficTitle,
+            description: messages.viewMeta.trafficDescription,
+          }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    saveLocalePreference(localePreference)
+  }, [localePreference])
+
+  useEffect(() => {
+    setApiLocale(locale)
+  }, [locale])
 
   function cancelActiveRequest() {
     activeRequestControllerRef.current?.abort()
@@ -106,36 +133,55 @@ export default function App() {
     setLoading(false)
   }
 
-  const loadDashboard = useCallback(async () => {
-    cancelActiveRequest()
+  const loadAdminData = useCallback(async () => {
+    activeRequestControllerRef.current?.abort()
+    activeRequestControllerRef.current = null
     const controller = new AbortController()
     activeRequestControllerRef.current = controller
     setLoading(true)
 
     try {
-      const nextDashboard = await api.dashboard(controller.signal)
-      startTransition(() => {
-        setDashboard(nextDashboard)
-      })
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return
+      const [dashboardResult, metricsResult] = await Promise.allSettled([
+        api.dashboard(controller.signal),
+        api.metrics(metricsWindow, controller.signal),
+      ])
+
+      if (dashboardResult.status === 'fulfilled') {
+        startTransition(() => {
+          setDashboard(dashboardResult.value)
+        })
+      } else if (
+        !(dashboardResult.reason instanceof Error && dashboardResult.reason.name === 'AbortError')
+      ) {
+        setFlash({
+          tone: 'error',
+          text: dashboardResult.reason instanceof Error ? dashboardResult.reason.message : messages.app.loadFailed,
+        })
       }
-      setFlash({
-        tone: 'error',
-        text: error instanceof Error ? error.message : 'Failed to load dashboard.',
-      })
+
+      if (metricsResult.status === 'fulfilled') {
+        startTransition(() => {
+          setMetrics(metricsResult.value)
+        })
+      } else if (
+        !(metricsResult.reason instanceof Error && metricsResult.reason.name === 'AbortError')
+      ) {
+        setFlash({
+          tone: 'error',
+          text: metricsResult.reason instanceof Error ? metricsResult.reason.message : messages.app.metricsLoadFailed,
+        })
+      }
     } finally {
       if (activeRequestControllerRef.current === controller) {
         activeRequestControllerRef.current = null
         setLoading(false)
       }
     }
-  }, [])
+  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, metricsWindow])
 
   useEffect(() => {
-    void loadDashboard()
-  }, [loadDashboard])
+    void loadAdminData()
+  }, [loadAdminData])
 
   useEffect(() => {
     return () => {
@@ -169,7 +215,7 @@ export default function App() {
     } catch (error) {
       setFlash({
         tone: 'error',
-        text: error instanceof Error ? error.message : 'Action failed.',
+        text: error instanceof Error ? error.message : messages.app.actionFailed,
       })
       return false
     } finally {
@@ -251,12 +297,20 @@ export default function App() {
       : `http://${dashboard.listen_host}:${dashboard.listen_port}/v1`
 
   return (
-    <div className="admin-shell">
+    <I18nContext.Provider
+      value={{
+        locale,
+        localePreference,
+        setLocalePreference,
+        messages,
+      }}
+    >
+      <div className="admin-shell">
       <aside className="shell-sidebar">
         <div className="sidebar-brand">
-          <span className="eyebrow">VibeCoding Board</span>
-          <h2>Admin Console</h2>
-          <p>Single-node control surface for upstream routing, health, and request flow.</p>
+          <span className="eyebrow">{messages.app.brand}</span>
+          <h2>{messages.app.adminConsole}</h2>
+          <p>{messages.app.sidebarCopy}</p>
         </div>
 
         <nav className="sidebar-nav">
@@ -266,7 +320,7 @@ export default function App() {
             onClick={() => setCurrentView('overview')}
           >
             <LayoutDashboard size={18} />
-            <span>Overview</span>
+            <span>{messages.app.navOverview}</span>
           </button>
           <button
             type="button"
@@ -274,7 +328,7 @@ export default function App() {
             onClick={() => setCurrentView('providers')}
           >
             <Cable size={18} />
-            <span>Providers</span>
+            <span>{messages.app.navProviders}</span>
           </button>
           <button
             type="button"
@@ -282,22 +336,22 @@ export default function App() {
             onClick={() => setCurrentView('traffic')}
           >
             <ScrollText size={18} />
-            <span>Traffic</span>
+            <span>{messages.app.navTraffic}</span>
           </button>
         </nav>
 
         <div className="sidebar-status">
           <div className="sidebar-status-card">
-            <span className="surface-label">Primary provider</span>
-            <strong>{dashboard?.primary_provider ?? 'Waiting for runtime'}</strong>
+            <span className="surface-label">{messages.app.sidebarPrimaryProvider}</span>
+            <strong>{dashboard?.primary_provider ?? messages.app.waitingForRuntime}</strong>
           </div>
           <div className="sidebar-status-card">
-            <span className="surface-label">Last reload</span>
-            <strong>{dashboard ? formatTimestamp(dashboard.reloaded_at) : 'Loading…'}</strong>
+            <span className="surface-label">{messages.app.sidebarLastReload}</span>
+            <strong>{dashboard ? formatTimestamp(dashboard.reloaded_at) : messages.app.loading}</strong>
           </div>
           <div className="sidebar-status-card">
-            <span className="surface-label">Sync state</span>
-            <strong>{loading ? 'Refreshing dashboard' : 'Dashboard in sync'}</strong>
+            <span className="surface-label">{messages.app.sidebarSyncState}</span>
+            <strong>{loading ? messages.app.refreshingDashboard : messages.app.dashboardInSync}</strong>
           </div>
         </div>
       </aside>
@@ -305,7 +359,7 @@ export default function App() {
       <div className="shell-main">
         <header className="shell-header">
           <div className="header-copy">
-            <span className="eyebrow">Admin</span>
+            <span className="eyebrow">{messages.app.adminEyebrow}</span>
             <h1>{meta.title}</h1>
             <p>{meta.description}</p>
           </div>
@@ -313,31 +367,45 @@ export default function App() {
           <div className="header-controls">
             <div className="header-meta">
               <div className="meta-chip">
-                <span className="surface-label">Proxy endpoint</span>
+                <span className="surface-label">{messages.app.proxyEndpoint}</span>
                 <strong>{proxyBase}</strong>
               </div>
               <div className="meta-chip">
-                <span className="surface-label">Config path</span>
-                <strong>{dashboard?.config_path ?? 'Loading…'}</strong>
+                <span className="surface-label">{messages.app.configPath}</span>
+                <strong>{dashboard?.config_path ?? messages.app.loading}</strong>
               </div>
             </div>
 
             <div className="header-actions">
+              <label className="select-field locale-select">
+                <Globe2 size={16} />
+                <span className="surface-label">{messages.locale.label}</span>
+                <select
+                  value={localePreference}
+                  onChange={(event) => setLocalePreference(event.target.value as LocalePreference)}
+                  aria-label={messages.locale.label}
+                >
+                  <option value="auto">{messages.locale.auto}</option>
+                  <option value="zh-CN">{messages.locale.chinese}</option>
+                  <option value="en">{messages.locale.english}</option>
+                </select>
+              </label>
+
               <button
                 type="button"
                 className="ghost-button"
                 onClick={() => {
-                  void loadDashboard()
+                  void loadAdminData()
                 }}
                 disabled={loading}
               >
                 <RefreshCw size={16} className={loading ? 'spin-icon' : ''} />
-                {loading ? 'Refreshing…' : 'Refresh'}
+                {loading ? messages.app.refreshing : messages.app.refresh}
               </button>
 
               <button type="button" className="accent-button" onClick={openCreateDrawer}>
                 <Plus size={16} />
-                Add provider
+                {messages.app.addProvider}
               </button>
 
               <button
@@ -346,7 +414,7 @@ export default function App() {
                 onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
               >
                 {theme === 'dark' ? <SunMedium size={16} /> : <MoonStar size={16} />}
-                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                {theme === 'dark' ? messages.app.lightMode : messages.app.darkMode}
               </button>
             </div>
           </div>
@@ -357,30 +425,33 @@ export default function App() {
         <main className="shell-content">
           {!dashboard ? (
             <section className="surface-card loading-state">
-              <span className="eyebrow">Runtime</span>
-              <h2>{loading ? 'Loading dashboard' : 'Dashboard unavailable'}</h2>
+              <span className="eyebrow">{messages.app.runtime}</span>
+              <h2>{loading ? messages.app.loadingDashboard : messages.app.dashboardUnavailable}</h2>
               <p>
                 {loading
-                  ? 'Collecting the latest runtime snapshot from the local proxy.'
-                  : 'The admin UI could not load current state. Retry after the backend is available.'}
+                  ? messages.app.collectingSnapshot
+                  : messages.app.retryAfterBackend}
               </p>
               {!loading ? (
                 <button
                   type="button"
                   className="accent-button"
                   onClick={() => {
-                    void loadDashboard()
+                    void loadAdminData()
                   }}
                 >
-                  Retry
+                  {messages.app.retry}
                 </button>
               ) : null}
             </section>
           ) : currentView === 'overview' ? (
             <OverviewView
               dashboard={dashboard}
+              metrics={metrics}
+              metricsWindow={metricsWindow}
               proxyBase={proxyBase}
               loading={loading}
+              onMetricsWindowChange={(window) => setMetricsWindow(window)}
               onNavigate={(view) => setCurrentView(view)}
             />
           ) : currentView === 'providers' ? (
@@ -415,18 +486,15 @@ export default function App() {
 
       <ConfirmDialog
         open={deletingProvider !== null}
-        title={deletingProvider ? `Delete ${deletingProvider.name}?` : 'Delete provider'}
-        description={
-          deletingProvider
-            ? 'This removes the upstream from config.yaml immediately. Ongoing requests keep their current runtime snapshot, but new requests will stop considering this provider.'
-            : ''
-        }
+        title={deletingProvider ? messages.confirm.deleteTitle(deletingProvider.name) : messages.confirm.deleteProvider}
+        description={deletingProvider ? messages.confirm.deleteDescription : ''}
         busy={busyAction === `delete:${deletingProvider?.name ?? ''}`}
         onCancel={() => setDeletingProvider(null)}
         onConfirm={() => {
           void handleDeleteConfirm()
         }}
       />
-    </div>
+      </div>
+    </I18nContext.Provider>
   )
 }

@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from vibecoding_board.admin_api import build_admin_router
+from vibecoding_board.admin_metrics import AdminMetricsStore
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
 from vibecoding_board.service import ProxyService, build_error_response
@@ -29,17 +30,22 @@ def create_app(
         client = httpx.AsyncClient(timeout=None, transport=transport, follow_redirects=False)
         runtime_manager = RuntimeManager(config_path)
         request_log_store = RequestLogStore()
+        metrics_store = AdminMetricsStore(config_path.parent / "data" / "metrics" / "admin_hourly.json")
+        metrics_store.load()
         await runtime_manager.initialize()
         app.state.runtime_manager = runtime_manager
         app.state.request_log_store = request_log_store
+        app.state.metrics_store = metrics_store
         app.state.service = ProxyService(
             runtime_manager=runtime_manager,
             request_log_store=request_log_store,
+            metrics_store=metrics_store,
             client=client,
         )
         try:
             yield
         finally:
+            await metrics_store.close()
             await client.aclose()
 
     app = FastAPI(title="vibecoding-board", version="0.1.0", lifespan=lifespan)

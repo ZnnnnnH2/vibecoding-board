@@ -3,13 +3,15 @@ import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 
 import {
   formatTimestamp,
+  getRequestStateLabel,
   requestHeadline,
 } from '../format'
+import { useI18n } from '../i18n'
 
 import type { RecentRequest } from '../types'
 
 
-type RequestStateFilter = 'all' | 'success' | 'failed' | 'interrupted'
+type RequestStateFilter = 'all' | 'success' | 'error' | 'interrupted'
 type RequestKindFilter = 'all' | 'chat' | 'response'
 
 type TrafficViewProps = {
@@ -18,13 +20,15 @@ type TrafficViewProps = {
 
 
 export function TrafficView({ requests }: TrafficViewProps) {
+  const { messages } = useI18n()
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<RequestStateFilter>('all')
   const [kindFilter, setKindFilter] = useState<RequestKindFilter>('all')
+  const [rowLimit, setRowLimit] = useState<10 | 50>(10)
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
   const deferredSearch = useDeferredValue(search)
 
-  const visibleRequests = requests.filter((request) => {
+  const filteredRequests = requests.filter((request) => {
     const query = deferredSearch.trim().toLowerCase()
     const haystack = `${request.model} ${request.final_provider ?? ''} ${request.final_url ?? request.endpoint}`.toLowerCase()
     const matchesSearch = haystack.includes(query)
@@ -32,16 +36,17 @@ export function TrafficView({ requests }: TrafficViewProps) {
     const matchesKind = kindFilter === 'all' ? true : request.request_kind === kindFilter
     return matchesSearch && matchesState && matchesKind
   })
+  const visibleRequests = filteredRequests.slice(0, rowLimit)
 
   return (
     <div className="page-stack">
       <section className="surface-card">
         <div className="section-header">
           <div>
-            <span className="eyebrow">Traffic</span>
-            <h2>Recent request log</h2>
+            <span className="eyebrow">{messages.traffic.eyebrow}</span>
+            <h2>{messages.traffic.title}</h2>
           </div>
-          <span className="section-caption">Memory only. Cleared on process restart.</span>
+          <span className="section-caption">{messages.traffic.memoryOnly}</span>
         </div>
 
         <div className="toolbar-row">
@@ -50,7 +55,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by model, provider, or URL"
+              placeholder={messages.traffic.searchPlaceholder}
             />
           </label>
 
@@ -59,9 +64,9 @@ export function TrafficView({ requests }: TrafficViewProps) {
               value={kindFilter}
               onChange={(event) => setKindFilter(event.target.value as RequestKindFilter)}
             >
-              <option value="all">All kinds</option>
-              <option value="chat">Chat</option>
-              <option value="response">Response</option>
+              <option value="all">{messages.traffic.allKinds}</option>
+              <option value="chat">{messages.traffic.chat}</option>
+              <option value="response">{messages.traffic.response}</option>
             </select>
           </label>
 
@@ -70,18 +75,30 @@ export function TrafficView({ requests }: TrafficViewProps) {
               value={stateFilter}
               onChange={(event) => setStateFilter(event.target.value as RequestStateFilter)}
             >
-              <option value="all">All states</option>
-              <option value="success">Success</option>
-              <option value="failed">Failed</option>
-              <option value="interrupted">Interrupted</option>
+              <option value="all">{messages.traffic.allStates}</option>
+              <option value="success">{messages.traffic.success}</option>
+              <option value="error">{messages.traffic.failed}</option>
+              <option value="interrupted">{messages.traffic.interrupted}</option>
+            </select>
+          </label>
+
+          <label className="select-field">
+            <span className="surface-label">{messages.traffic.rowLimit}</span>
+            <select
+              value={rowLimit}
+              onChange={(event) => setRowLimit(Number(event.target.value) as 10 | 50)}
+              aria-label={messages.traffic.rowLimit}
+            >
+              <option value={10}>{messages.traffic.first10}</option>
+              <option value={50}>{messages.traffic.first50}</option>
             </select>
           </label>
         </div>
 
-        {visibleRequests.length === 0 ? (
+        {filteredRequests.length === 0 ? (
           <div className="empty-state compact-empty">
-            <h3>No traffic rows match the current filters</h3>
-            <p>As requests pass through `/v1`, routing records will appear here.</p>
+            <h3>{messages.traffic.emptyTitle}</h3>
+            <p>{messages.traffic.emptyCopy}</p>
           </div>
         ) : (
           <div className="table-shell">
@@ -89,12 +106,12 @@ export function TrafficView({ requests }: TrafficViewProps) {
               <thead>
                 <tr>
                   <th />
-                  <th>Request</th>
-                  <th>Final provider</th>
-                  <th>Status</th>
-                  <th>Latency</th>
-                  <th>First byte</th>
-                  <th>Created</th>
+                  <th>{messages.traffic.request}</th>
+                  <th>{messages.traffic.finalProvider}</th>
+                  <th>{messages.traffic.status}</th>
+                  <th>{messages.traffic.latency}</th>
+                  <th>{messages.traffic.firstByte}</th>
+                  <th>{messages.traffic.created}</th>
                 </tr>
               </thead>
               <tbody>
@@ -108,25 +125,25 @@ export function TrafficView({ requests }: TrafficViewProps) {
                             type="button"
                             className="expand-button"
                             onClick={() => setExpandedRequestId(expanded ? null : request.id)}
-                            aria-label={expanded ? 'Collapse request details' : 'Expand request details'}
+                            aria-label={expanded ? messages.traffic.collapseDetails : messages.traffic.expandDetails}
                           >
                             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </button>
                         </td>
                         <td>
                           <div className="table-primary">
-                            <strong>{requestHeadline(request)}</strong>
+                            <strong>{requestHeadline(request, messages)}</strong>
                             <span>{request.final_url ?? request.endpoint}</span>
                           </div>
                         </td>
-                        <td>{request.final_provider ?? 'No provider selected'}</td>
+                        <td>{request.final_provider ?? messages.traffic.noProviderSelected}</td>
                         <td>
                           <span className={`pill pill-${request.state === 'success' ? 'emerald' : request.state === 'interrupted' ? 'amber' : 'rose'}`}>
-                            {request.state}
+                            {getRequestStateLabel(request.state, messages)}
                           </span>
                         </td>
-                        <td>{request.duration_ms ?? 'N/A'} ms</td>
-                        <td>{request.ttfb_ms ?? 'N/A'} ms</td>
+                        <td>{request.duration_ms ?? messages.app.notAvailable} ms</td>
+                        <td>{request.ttfb_ms ?? messages.app.notAvailable} ms</td>
                         <td>{formatTimestamp(request.created_at)}</td>
                       </tr>
                       {expanded ? (
@@ -135,32 +152,32 @@ export function TrafficView({ requests }: TrafficViewProps) {
                             <div className="expanded-panel">
                               <div className="expanded-grid">
                                 <div className="expanded-card">
-                                  <span className="surface-label">Endpoint</span>
+                                  <span className="surface-label">{messages.traffic.endpoint}</span>
                                   <strong>{request.endpoint}</strong>
                                 </div>
                                 <div className="expanded-card">
-                                  <span className="surface-label">Mode</span>
-                                  <strong>{request.stream ? 'Streaming' : 'Standard'}</strong>
+                                  <span className="surface-label">{messages.traffic.mode}</span>
+                                  <strong>{request.stream ? messages.traffic.streaming : messages.traffic.standard}</strong>
                                 </div>
                                 <div className="expanded-card">
-                                  <span className="surface-label">HTTP status</span>
-                                  <strong>{request.status_code ?? 'N/A'}</strong>
+                                  <span className="surface-label">{messages.traffic.httpStatus}</span>
+                                  <strong>{request.status_code ?? messages.app.notAvailable}</strong>
                                 </div>
                                 <div className="expanded-card">
-                                  <span className="surface-label">Usage</span>
+                                  <span className="surface-label">{messages.traffic.usage}</span>
                                   <strong>
                                     {request.usage
-                                      ? `${request.usage.input_tokens ?? 'N/A'} / ${request.usage.output_tokens ?? 'N/A'} / ${request.usage.total_tokens ?? 'N/A'}`
-                                      : 'No usage fields'}
+                                      ? `${request.usage.input_tokens ?? messages.app.notAvailable} / ${request.usage.output_tokens ?? messages.app.notAvailable} / ${request.usage.total_tokens ?? messages.app.notAvailable}`
+                                      : messages.traffic.noUsageFields}
                                   </strong>
                                 </div>
                               </div>
 
                               <div className="expanded-columns">
                                 <div className="expanded-block">
-                                  <span className="surface-label">Fallback attempts</span>
+                                  <span className="surface-label">{messages.traffic.fallbackAttempts}</span>
                                   {request.attempts.length === 0 ? (
-                                    <p>No retry attempts were required before the final route was established.</p>
+                                    <p>{messages.traffic.noRetryAttempts}</p>
                                   ) : (
                                     <div className="attempt-list">
                                       {request.attempts.map((attempt) => (
@@ -174,7 +191,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
                                           </div>
                                           <div>
                                             <strong>{attempt.outcome}</strong>
-                                            <span>{attempt.status_code ?? 'no status'}</span>
+                                            <span>{attempt.status_code ?? messages.traffic.noStatus}</span>
                                           </div>
                                         </div>
                                       ))}
@@ -183,8 +200,8 @@ export function TrafficView({ requests }: TrafficViewProps) {
                                 </div>
 
                                 <div className="expanded-block">
-                                  <span className="surface-label">Error</span>
-                                  <p>{request.error ?? 'No error recorded for this request.'}</p>
+                                  <span className="surface-label">{messages.traffic.error}</span>
+                                  <p>{request.error ?? messages.traffic.noErrorRecorded}</p>
                                 </div>
                               </div>
                             </div>
