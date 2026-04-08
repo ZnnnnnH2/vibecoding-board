@@ -18,7 +18,7 @@ class ProviderCreatePayload(BaseModel):
     base_url: str
     api_key: str
     enabled: bool = True
-    priority: int | None = Field(default=None, ge=1)
+    priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
     timeout_seconds: float = Field(default=60.0, gt=0)
@@ -47,7 +47,7 @@ class ProviderUpdatePayload(BaseModel):
     base_url: str
     api_key: str | None = None
     enabled: bool = True
-    priority: int | None = Field(default=None, ge=1)
+    priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
     timeout_seconds: float = Field(default=60.0, gt=0)
@@ -78,7 +78,7 @@ class ProviderUpdatePayload(BaseModel):
 class ProviderPriorityUpdatePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    priority: int = Field(ge=1)
+    priority: int
 
 
 def build_admin_router() -> APIRouter:

@@ -154,18 +154,16 @@ class RequestLogStore:
         async with self._lock:
             entries = list(self._completed_entries)
 
-        relevant_entries = [entry for entry in entries if entry.final_provider in provider_names]
-
         provider_stats = [
             self._build_provider_stats(
                 provider_name,
-                [entry for entry in relevant_entries if entry.final_provider == provider_name],
+                [entry for entry in entries if entry.final_provider == provider_name],
             )
             for provider_name in provider_names
         ]
 
         return {
-            "global": self._build_provider_stats("all", relevant_entries),
+            "global": self._build_provider_stats("all", entries),
             "providers": provider_stats,
         }
 

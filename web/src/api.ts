@@ -33,6 +33,32 @@ function parseError(payload: unknown, fallback: string): string {
   if (typeof detail === 'string' && detail) {
     return detail
   }
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item !== 'object' || item === null) {
+          return null
+        }
+        const msg = 'msg' in item && typeof item.msg === 'string' ? item.msg : null
+        if (!msg) {
+          return null
+        }
+        const location =
+          'loc' in item && Array.isArray(item.loc)
+            ? item.loc
+                .filter(
+                  (part: unknown): part is string | number => typeof part === 'string' || typeof part === 'number',
+                )
+                .filter((part: string | number) => part !== 'body')
+                .join('.')
+            : ''
+        return location ? `${location}: ${msg}` : msg
+      })
+      .filter((message): message is string => Boolean(message))
+    if (messages.length > 0) {
+      return messages.join('; ')
+    }
+  }
 
   const error = 'error' in payload ? payload.error : undefined
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
@@ -75,14 +101,14 @@ function buildProviderPayload(form: ProviderFormState) {
           .split('\n')
           .map((value) => value.trim())
           .filter(Boolean)
-  const priority = Number(form.priority)
+  const priority = Number.parseInt(form.priority, 10)
 
   return {
     name: form.name.trim(),
     base_url: form.baseUrl.trim(),
     api_key: form.apiKey.trim(),
     enabled: form.enabled,
-    priority: Number.isFinite(priority) && priority > 0 ? priority : 10,
+    priority: Number.isNaN(priority) ? 10 : priority,
     models,
     healthcheck_model: form.healthcheckModel.trim() || null,
     timeout_seconds: Number(form.timeoutSeconds),

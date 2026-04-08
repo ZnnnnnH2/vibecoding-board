@@ -191,7 +191,7 @@ class ProxyService:
             status_code = response.status_code
             ok = 200 <= response.status_code < 300
             if not ok:
-                error = self._extract_response_error_message(response)
+                error = self._extract_upstream_error_message(response)
         except httpx.HTTPError as exc:
             error = str(exc)
 
@@ -340,9 +340,12 @@ class ProxyService:
                 )
                 continue
 
-            await registry.mark_success(provider.name)
             duration_ms = int((perf_counter() - started_at) * 1000)
             usage = self._extract_usage_from_response(response)
+            state = "success" if status_kind == "success" else "error"
+            error = None if state == "success" else self._extract_upstream_error_message(response)
+            if state == "success":
+                await registry.mark_success(provider.name)
             await self._finalize_request(
                 log_id,
                 final_provider=provider.name,
@@ -350,8 +353,8 @@ class ProxyService:
                 status_code=response.status_code,
                 duration_ms=duration_ms,
                 ttfb_ms=duration_ms,
-                state="success",
-                error=None,
+                state=state,
+                error=error,
                 usage=usage,
                 attempts=self._to_attempt_logs(attempts),
             )
@@ -437,7 +440,6 @@ class ProxyService:
 
             if status_kind == "non_retryable":
                 body_bytes = await response.aread()
-                await registry.mark_success(provider.name)
                 await response.aclose()
                 duration_ms = int((perf_counter() - started_at) * 1000)
                 usage = self._extract_usage_from_bytes(body_bytes)
@@ -448,8 +450,8 @@ class ProxyService:
                     status_code=response.status_code,
                     duration_ms=duration_ms,
                     ttfb_ms=duration_ms,
-                    state="success",
-                    error=None,
+                    state="error",
+                    error=self._extract_upstream_error_message(response),
                     usage=usage,
                     attempts=self._to_attempt_logs(attempts),
                 )
@@ -698,18 +700,18 @@ class ProxyService:
         return None
 
     @staticmethod
-    def _extract_response_error_message(response: httpx.Response) -> str | None:
+    def _extract_upstream_error_message(response: httpx.Response) -> str | None:
         try:
             payload = response.json()
         except json.JSONDecodeError:
-            return f"Health check returned status {response.status_code}."
+            return f"Upstream returned status {response.status_code}."
         if isinstance(payload, dict):
             error = payload.get("error")
             if isinstance(error, dict) and isinstance(error.get("message"), str):
                 return error["message"]
             if isinstance(error, str):
                 return error
-        return f"Health check returned status {response.status_code}."
+        return f"Upstream returned status {response.status_code}."
 
 
 class StreamUsageParser:

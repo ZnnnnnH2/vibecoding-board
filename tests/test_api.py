@@ -70,6 +70,10 @@ def build_upstream_app() -> FastAPI:
         host = request.url.hostname
         payload = await request.json()
         stream = bool(payload.get("stream"))
+        message = payload.get("messages", [{}])[0].get("content") if payload.get("messages") else None
+
+        if message == "authfail":
+            return JSONResponse(status_code=401, content={"error": {"message": "bad key"}})
 
         if host == "relay-a.example.com" and not stream:
             return JSONResponse(status_code=503, content={"error": "unavailable"})
@@ -180,3 +184,51 @@ def test_invalid_json_returns_openai_style_error(workspace_tmp_dir: Path) -> Non
 
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "invalid_json"
+
+
+def test_non_stream_non_retryable_response_is_logged_as_error(workspace_tmp_dir: Path) -> None:
+    app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "authfail"}]},
+        )
+        dashboard = client.get("/admin/api/dashboard").json()
+        metrics = client.get("/admin/api/metrics?window=24h").json()
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "bad key"
+    assert dashboard["recent_requests"][0]["final_provider"] == "relay_a"
+    assert dashboard["recent_requests"][0]["state"] == "error"
+    assert dashboard["recent_requests"][0]["error"] == "bad key"
+    assert dashboard["stats"]["global"]["served_requests"] == 1
+    assert dashboard["stats"]["global"]["successful_requests"] == 0
+    assert dashboard["stats"]["global"]["success_rate"] == 0.0
+    states = {item["state"]: item["count"] for item in metrics["breakdowns"]["states"]}
+    assert states["success"] == 0
+    assert states["error"] == 1
+
+
+def test_stream_non_retryable_response_is_logged_as_error_before_stream_starts(workspace_tmp_dir: Path) -> None:
+    app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "stream": True, "messages": [{"role": "user", "content": "authfail"}]},
+        ) as response:
+            body = b"".join(response.iter_raw())
+        dashboard = client.get("/admin/api/dashboard").json()
+        metrics = client.get("/admin/api/metrics?window=24h").json()
+
+    assert response.status_code == 401
+    assert b"bad key" in body
+    assert dashboard["recent_requests"][0]["final_provider"] == "relay_a"
+    assert dashboard["recent_requests"][0]["state"] == "error"
+    assert dashboard["stats"]["global"]["served_requests"] == 1
+    assert dashboard["stats"]["global"]["successful_requests"] == 0
+    states = {item["state"]: item["count"] for item in metrics["breakdowns"]["states"]}
+    assert states["success"] == 0
+    assert states["error"] == 1

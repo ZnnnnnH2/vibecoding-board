@@ -269,6 +269,84 @@ def test_patch_provider_priority_writes_config_and_changes_routing(workspace_tmp
     assert relay_b.priority == 5
 
 
+def test_update_provider_accepts_negative_priority_round_trip(workspace_tmp_dir: Path) -> None:
+    config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": -10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                },
+                {
+                    "name": "relay_b",
+                    "base_url": "https://relay-b.example.com/v1",
+                    "api_key": "key-b",
+                    "enabled": True,
+                    "priority": 20,
+                    "models": ["gpt-4.1", "gpt-4o-mini"],
+                    "timeout_seconds": 20,
+                    "max_failures": 3,
+                    "cooldown_seconds": 45,
+                },
+            ],
+        }
+    )
+    config_path = write_config(workspace_tmp_dir, config)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/admin/api/providers/relay_a",
+            json={
+                "name": "relay_a",
+                "base_url": "https://relay-a.example.com/v1",
+                "api_key": "",
+                "enabled": True,
+                "priority": -10,
+                "models": ["gpt-4.1"],
+                "healthcheck_model": None,
+                "timeout_seconds": 10,
+                "max_failures": 2,
+                "cooldown_seconds": 30,
+            },
+        )
+
+        assert response.status_code == 200
+        providers = response.json()["dashboard"]["providers"]
+        assert providers[0]["name"] == "relay_a"
+        assert providers[0]["priority"] == -10
+
+    saved = load_proxy_config(config_path)
+    relay_a = next(provider for provider in saved.providers if provider.name == "relay_a")
+    assert relay_a.priority == -10
+
+
+def test_patch_provider_priority_accepts_negative_value(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/admin/api/providers/relay_b/priority",
+            json={"priority": -5},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["dashboard"]["primary_provider"] == "relay_b"
+
+    saved = load_proxy_config(config_path)
+    relay_b = next(provider for provider in saved.providers if provider.name == "relay_b")
+    assert relay_b.priority == -5
+
+
 def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
     config_path = write_config(workspace_tmp_dir)
     app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
@@ -297,6 +375,29 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
     assert {provider.name for provider in saved.providers} == {"relay_a", "relay_b", "relay_c"}
     created = next(provider for provider in saved.providers if provider.name == "relay_c")
     assert created.healthcheck_model == "gpt-4o-mini"
+
+
+def test_dashboard_global_stats_keep_deleted_provider_history(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        initial = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert initial.status_code == 200
+
+        deleted = client.delete("/admin/api/providers/relay_a")
+
+    assert deleted.status_code == 200
+    payload = deleted.json()["dashboard"]
+    assert [provider["name"] for provider in payload["providers"]] == ["relay_b"]
+    assert payload["stats"]["global"]["served_requests"] == 1
+    assert payload["stats"]["global"]["successful_requests"] == 1
+    assert payload["stats"]["global"]["success_rate"] == 1.0
+    assert payload["stats"]["providers"][0]["provider_name"] == "relay_b"
+    assert payload["stats"]["providers"][0]["served_requests"] == 0
 
 
 def test_create_provider_returns_localized_message_when_locale_is_chinese(workspace_tmp_dir: Path) -> None:

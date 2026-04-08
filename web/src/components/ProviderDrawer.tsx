@@ -121,7 +121,6 @@ export function ProviderDrawer({
                 <span>{messages.drawer.priority}</span>
                 <input
                   type="number"
-                  min="1"
                   step="1"
                   value={form.priority}
                   onChange={(event) => update('priority', event.target.value)}

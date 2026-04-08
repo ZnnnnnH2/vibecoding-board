@@ -61,7 +61,7 @@ export function ProvidersView({
 
   async function commitPriority(provider: ProviderSummary, value: string, input: HTMLInputElement) {
     const normalized = Number.parseInt(value.trim(), 10)
-    if (!Number.isFinite(normalized) || normalized < 1) {
+    if (!Number.isFinite(normalized)) {
       input.value = String(provider.priority)
       return
     }
@@ -175,7 +175,6 @@ export function ProvidersView({
                             key={`${provider.name}:${provider.priority}`}
                             className="table-priority-input"
                             type="number"
-                            min="1"
                             step="1"
                             defaultValue={provider.priority}
                             onBlur={(event) => {

@@ -1,26 +1,48 @@
 {
-  "last_flushed_at": "2026-04-08T08:56:53.029666+08:00",
+  "last_flushed_at": "2026-04-08T09:42:34.649148+08:00",
   "retention_hours": 720,
   "buckets": [
     {
       "bucket_start": "2026-04-08T08:00:00+08:00",
-      "requests": 19,
-      "success_count": 17,
+      "requests": 25,
+      "success_count": 23,
       "interrupted_count": 2,
       "error_count": 0,
-      "total_tokens": 3856424,
-      "duration_sum_ms": 338056,
-      "duration_count": 19,
-      "ttfb_sum_ms": 82292,
-      "ttfb_count": 19,
+      "total_tokens": 3993976,
+      "duration_sum_ms": 510125,
+      "duration_count": 25,
+      "ttfb_sum_ms": 157665,
+      "ttfb_count": 25,
       "providers": {
         "relay_asxs": {
-          "requests": 14,
-          "total_tokens": 3755241
+          "requests": 16,
+          "total_tokens": 3843420
         },
         "relay_998": {
-          "requests": 5,
-          "total_tokens": 101183
+          "requests": 9,
+          "total_tokens": 150556
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T09:00:00+08:00",
+      "requests": 77,
+      "success_count": 72,
+      "interrupted_count": 5,
+      "error_count": 0,
+      "total_tokens": 3809374,
+      "duration_sum_ms": 2729477,
+      "duration_count": 77,
+      "ttfb_sum_ms": 232354,
+      "ttfb_count": 77,
+      "providers": {
+        "relay_998": {
+          "requests": 45,
+          "total_tokens": 1386403
+        },
+        "relay_asxs": {
+          "requests": 32,
+          "total_tokens": 2422971
         }
       }
     }
