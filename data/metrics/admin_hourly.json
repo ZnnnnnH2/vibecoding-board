@@ -1,5 +1,5 @@
 {
-  "last_flushed_at": "2026-04-10T08:31:52.789520+08:00",
+  "last_flushed_at": "2026-04-10T09:01:40.668549+08:00",
   "retention_hours": 720,
   "buckets": [
     {
@@ -606,19 +606,41 @@
     },
     {
       "bucket_start": "2026-04-10T08:00:00+08:00",
-      "requests": 39,
-      "success_count": 36,
-      "interrupted_count": 3,
+      "requests": 78,
+      "success_count": 68,
+      "interrupted_count": 10,
       "error_count": 0,
-      "total_tokens": 2776799,
-      "duration_sum_ms": 624763,
-      "duration_count": 39,
-      "ttfb_sum_ms": 111975,
-      "ttfb_count": 39,
+      "total_tokens": 7828874,
+      "duration_sum_ms": 1894277,
+      "duration_count": 78,
+      "ttfb_sum_ms": 228286,
+      "ttfb_count": 78,
       "providers": {
         "aiapis": {
-          "requests": 39,
-          "total_tokens": 2776799
+          "requests": 43,
+          "total_tokens": 3210089
+        },
+        "relay_asxs": {
+          "requests": 35,
+          "total_tokens": 4618785
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-10T09:00:00+08:00",
+      "requests": 3,
+      "success_count": 3,
+      "interrupted_count": 0,
+      "error_count": 0,
+      "total_tokens": 345200,
+      "duration_sum_ms": 127317,
+      "duration_count": 3,
+      "ttfb_sum_ms": 14917,
+      "ttfb_count": 3,
+      "providers": {
+        "relay_asxs": {
+          "requests": 3,
+          "total_tokens": 345200
         }
       }
     }

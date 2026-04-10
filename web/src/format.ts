@@ -127,6 +127,9 @@ export function getRequestStateMeta(
 
 export function sortProviders(providers: ProviderSummary[]): ProviderSummary[] {
   return [...providers].sort((left, right) => {
+    if (left.enabled !== right.enabled) {
+      return left.enabled ? -1 : 1
+    }
     if (left.priority !== right.priority) {
       return left.priority - right.priority
     }

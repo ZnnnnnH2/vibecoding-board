@@ -2,6 +2,8 @@ import { Fragment, useDeferredValue, useState } from 'react'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { motion } from 'framer-motion'
 
+import type { Variants } from 'framer-motion'
+
 import {
   formatTimestamp,
   getRequestStateMeta,
@@ -19,7 +21,7 @@ type TrafficViewProps = {
   requests: RecentRequest[]
 }
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0, scale: 0.98 },
   visible: {
     opacity: 1,
@@ -33,7 +35,7 @@ const containerVariants = {
   },
 }
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 15 },
   visible: {
     opacity: 1,

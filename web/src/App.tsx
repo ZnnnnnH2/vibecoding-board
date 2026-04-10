@@ -17,7 +17,9 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { OverviewView } from './components/OverviewView'
 import { ProviderDrawer } from './components/ProviderDrawer'
 import { ProvidersView } from './components/ProvidersView'
+import { ResultDialog } from './components/ResultDialog'
 import { SettingsView } from './components/SettingsView'
+import { ToastStack } from './components/ToastStack'
 import { TrafficView } from './components/TrafficView'
 import {
   I18nContext,
@@ -29,6 +31,7 @@ import {
 
 import type {
   DashboardResponse,
+  HealthcheckSummary,
   MetricsResponse,
   MetricsWindow,
   ProviderFormState,
@@ -38,6 +41,17 @@ import type {
 import type { LocalePreference } from './i18n'
 
 type AdminView = 'overview' | 'providers' | 'traffic' | 'settings'
+
+type ToastNotification = {
+  id: number
+  tone: 'success' | 'error'
+  text: string
+}
+
+type DialogState =
+  | { kind: 'confirm-delete'; provider: ProviderSummary }
+  | { kind: 'healthcheck-result'; providerName: string; healthcheck: HealthcheckSummary }
+  | null
 
 
 const emptyForm: ProviderFormState = {
@@ -52,6 +66,15 @@ const emptyForm: ProviderFormState = {
   timeoutSeconds: '60',
   maxFailures: '3',
   cooldownSeconds: '30',
+}
+
+const emptyHealthcheck: HealthcheckSummary = {
+  checked_at: null,
+  ok: null,
+  status_code: null,
+  latency_ms: null,
+  model: null,
+  error: null,
 }
 
 
@@ -104,11 +127,12 @@ export default function App() {
   const [retryPolicyForm, setRetryPolicyForm] = useState<RetryPolicyFormState>(() => createRetryPolicyForm(null))
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [flash, setFlash] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
-  const [deletingProvider, setDeletingProvider] = useState<ProviderSummary | null>(null)
+  const [toasts, setToasts] = useState<ToastNotification[]>([])
+  const [dialog, setDialog] = useState<DialogState>(null)
   const [theme, setTheme] = useState<'dark' | 'light'>('light')
   const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
   const activeRequestControllerRef = useRef<AbortController | null>(null)
+  const toastIdRef = useRef(0)
   const locale = resolveLocale(localePreference)
   const messages = messagesByLocale[locale]
 
@@ -145,11 +169,28 @@ export default function App() {
     setApiLocale(locale)
   }, [locale])
 
-  function cancelActiveRequest() {
+  const cancelActiveRequest = useCallback(() => {
     activeRequestControllerRef.current?.abort()
     activeRequestControllerRef.current = null
     setLoading(false)
-  }
+  }, [])
+
+  const pushToast = useCallback((tone: ToastNotification['tone'], text: string) => {
+    toastIdRef.current += 1
+    setToasts((current) => [...current, { id: toastIdRef.current, tone, text }])
+  }, [])
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id))
+  }, [])
+
+  const openHealthcheckDialog = useCallback((providerName: string, healthcheck: HealthcheckSummary) => {
+    setDialog({
+      kind: 'healthcheck-result',
+      providerName,
+      healthcheck,
+    })
+  }, [])
 
   const loadAdminData = useCallback(async () => {
     activeRequestControllerRef.current?.abort()
@@ -171,10 +212,10 @@ export default function App() {
       } else if (
         !(dashboardResult.reason instanceof Error && dashboardResult.reason.name === 'AbortError')
       ) {
-        setFlash({
-          tone: 'error',
-          text: dashboardResult.reason instanceof Error ? dashboardResult.reason.message : messages.app.loadFailed,
-        })
+        pushToast(
+          'error',
+          dashboardResult.reason instanceof Error ? dashboardResult.reason.message : messages.app.loadFailed,
+        )
       }
 
       if (metricsResult.status === 'fulfilled') {
@@ -184,10 +225,10 @@ export default function App() {
       } else if (
         !(metricsResult.reason instanceof Error && metricsResult.reason.name === 'AbortError')
       ) {
-        setFlash({
-          tone: 'error',
-          text: metricsResult.reason instanceof Error ? metricsResult.reason.message : messages.app.metricsLoadFailed,
-        })
+        pushToast(
+          'error',
+          metricsResult.reason instanceof Error ? metricsResult.reason.message : messages.app.metricsLoadFailed,
+        )
       }
     } finally {
       if (activeRequestControllerRef.current === controller) {
@@ -195,7 +236,7 @@ export default function App() {
         setLoading(false)
       }
     }
-  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, metricsWindow])
+  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, metricsWindow, pushToast])
 
   useEffect(() => {
     void loadAdminData()
@@ -209,13 +250,20 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!flash) {
+    if (toasts.length === 0) {
       return undefined
     }
 
-    const timer = window.setTimeout(() => setFlash(null), 3500)
-    return () => window.clearTimeout(timer)
-  }, [flash])
+    const timers = toasts.map((toast) =>
+      window.setTimeout(() => {
+        setToasts((current) => current.filter((item) => item.id !== toast.id))
+      }, 3500),
+    )
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [toasts])
 
   useEffect(() => {
     if (!dashboard) {
@@ -235,13 +283,10 @@ export default function App() {
       startTransition(() => {
         setDashboard(response.dashboard)
       })
-      setFlash({ tone: 'success', text: response.message })
+      pushToast('success', response.message)
       return true
     } catch (error) {
-      setFlash({
-        tone: 'error',
-        text: error instanceof Error ? error.message : messages.app.actionFailed,
-      })
+      pushToast('error', error instanceof Error ? error.message : messages.app.actionFailed)
       return false
     } finally {
       setBusyAction(null)
@@ -297,7 +342,24 @@ export default function App() {
   }
 
   async function handleHealthcheck(provider: ProviderSummary) {
-    await runMutation(`health:${provider.name}`, () => api.healthcheckProvider(provider.name))
+    cancelActiveRequest()
+    setBusyAction(`health:${provider.name}`)
+    try {
+      const response = await api.healthcheckProvider(provider.name)
+      startTransition(() => {
+        setDashboard(response.dashboard)
+      })
+      const updatedProvider = response.dashboard.providers.find((item) => item.name === provider.name)
+      openHealthcheckDialog(provider.name, updatedProvider?.healthcheck ?? provider.healthcheck)
+    } catch (error) {
+      openHealthcheckDialog(provider.name, {
+        ...emptyHealthcheck,
+        ok: false,
+        error: error instanceof Error ? error.message : messages.app.actionFailed,
+      })
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   async function handlePrioritySave(provider: ProviderSummary, priority: number): Promise<boolean> {
@@ -305,14 +367,14 @@ export default function App() {
   }
 
   async function handleDeleteConfirm() {
-    if (!deletingProvider) {
+    if (dialog?.kind !== 'confirm-delete') {
       return
     }
 
-    const provider = deletingProvider
+    const provider = dialog.provider
     const success = await runMutation(`delete:${provider.name}`, () => api.deleteProvider(provider.name))
     if (success) {
-      setDeletingProvider(null)
+      setDialog(null)
     }
   }
 
@@ -457,8 +519,6 @@ export default function App() {
           </div>
         </header>
 
-        {flash ? <div className={`flash-banner flash-banner-${flash.tone}`}>{flash.text}</div> : null}
-
         <main className="shell-content">
           {!dashboard ? (
             <section className="surface-card loading-state">
@@ -500,7 +560,7 @@ export default function App() {
               onHealthcheck={handleHealthcheck}
               onPromote={handlePromote}
               onToggle={handleToggle}
-              onDelete={(provider) => setDeletingProvider(provider)}
+              onDelete={(provider) => setDialog({ kind: 'confirm-delete', provider })}
               onPrioritySave={handlePrioritySave}
             />
           ) : currentView === 'traffic' ? (
@@ -530,16 +590,25 @@ export default function App() {
         }}
       />
 
+      <ResultDialog
+        open={dialog?.kind === 'healthcheck-result'}
+        providerName={dialog?.kind === 'healthcheck-result' ? dialog.providerName : ''}
+        healthcheck={dialog?.kind === 'healthcheck-result' ? dialog.healthcheck : emptyHealthcheck}
+        onClose={() => setDialog(null)}
+      />
+
       <ConfirmDialog
-        open={deletingProvider !== null}
-        title={deletingProvider ? messages.confirm.deleteTitle(deletingProvider.name) : messages.confirm.deleteProvider}
-        description={deletingProvider ? messages.confirm.deleteDescription : ''}
-        busy={busyAction === `delete:${deletingProvider?.name ?? ''}`}
-        onCancel={() => setDeletingProvider(null)}
+        open={dialog?.kind === 'confirm-delete'}
+        title={dialog?.kind === 'confirm-delete' ? messages.confirm.deleteTitle(dialog.provider.name) : messages.confirm.deleteProvider}
+        description={dialog?.kind === 'confirm-delete' ? messages.confirm.deleteDescription : ''}
+        busy={busyAction === `delete:${dialog?.kind === 'confirm-delete' ? dialog.provider.name : ''}`}
+        onCancel={() => setDialog(null)}
         onConfirm={() => {
           void handleDeleteConfirm()
         }}
       />
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     </I18nContext.Provider>
   )

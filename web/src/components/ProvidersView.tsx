@@ -2,6 +2,8 @@ import { Search, SlidersHorizontal } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { motion } from 'framer-motion'
 
+import type { Variants } from 'framer-motion'
+
 import {
   findProviderStats,
   formatNumber,
@@ -32,7 +34,7 @@ type ProvidersViewProps = {
   onPrioritySave: (provider: ProviderSummary, priority: number) => Promise<boolean>
 }
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0, scale: 0.98 },
   visible: {
     opacity: 1,
@@ -46,7 +48,7 @@ const containerVariants = {
   },
 }
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 15 },
   visible: {
     opacity: 1,
@@ -190,7 +192,7 @@ export function ProvidersView({
                           <div className="table-title-row">
                             <strong>{provider.name}</strong>
                             {dashboard.primary_provider === provider.name ? (
-                              <span className="pill pill-primary">{messages.providers.primary}</span>
+                              <span className="pill pill-preferred">{messages.providers.primary}</span>
                             ) : null}
                           </div>
                           <span>{provider.base_url}</span>

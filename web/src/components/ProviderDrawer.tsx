@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { useI18n } from '../i18n'
 import type { ProviderFormState } from '../types'
@@ -37,22 +38,35 @@ export function ProviderDrawer({
     onSubmit()
   }
 
-  if (!open) return null
-
   return (
-    <div className="drawer-backdrop" role="presentation">
-      <aside className="drawer-panel">
-        <div className="drawer-header">
-          <div>
-            <span className="eyebrow">{mode === 'create' ? messages.drawer.newUpstream : messages.drawer.editUpstream}</span>
-            <h2>{mode === 'create' ? messages.drawer.addProvider : messages.drawer.refineProviderDetails}</h2>
-          </div>
-          <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-            {messages.drawer.close}
-          </button>
-        </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div 
+          className="drawer-backdrop" 
+          role="presentation"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.aside 
+            className="drawer-panel"
+            initial={{ x: '100%', opacity: 0.5 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          >
+            <div className="drawer-header">
+              <div>
+                <span className="eyebrow">{mode === 'create' ? messages.drawer.newUpstream : messages.drawer.editUpstream}</span>
+                <h2>{mode === 'create' ? messages.drawer.addProvider : messages.drawer.refineProviderDetails}</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
+                {messages.drawer.close}
+              </button>
+            </div>
 
-        <form className="drawer-form" onSubmit={handleSubmit}>
+            <form className="drawer-form" onSubmit={handleSubmit}>
           <section className="drawer-section">
             <div className="drawer-section-header">
               <div>
@@ -234,7 +248,9 @@ export function ProviderDrawer({
             </button>
           </div>
         </form>
-      </aside>
-    </div>
+          </motion.aside>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
