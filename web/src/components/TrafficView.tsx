@@ -1,5 +1,6 @@
 import { Fragment, useDeferredValue, useState } from 'react'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 import {
   formatTimestamp,
@@ -18,6 +19,32 @@ type TrafficViewProps = {
   requests: RecentRequest[]
 }
 
+const containerVariants = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 30,
+      staggerChildren: 0.05,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 24,
+    },
+  },
+}
 
 export function TrafficView({ requests }: TrafficViewProps) {
   const { messages } = useI18n()
@@ -49,8 +76,13 @@ export function TrafficView({ requests }: TrafficViewProps) {
   }
 
   return (
-    <div className="page-stack">
-      <section className="surface-card">
+    <motion.div 
+      className="page-stack"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
           <div>
             <span className="eyebrow">{messages.traffic.eyebrow}</span>
@@ -229,7 +261,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
             </table>
           </div>
         )}
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

@@ -199,10 +199,18 @@ class ProxyConfig(BaseModel):
         return primary.name
 
     def normalized(self) -> "ProxyConfig":
-        ordered = sorted(self.providers, key=lambda provider: (provider.priority, provider.name))
-        providers = [
-            provider.model_copy(update={"priority": (index + 1) * PRIORITY_STEP})
+        ordered = sorted(
+            self.providers,
+            key=lambda provider: (provider.priority, provider.name),
+            reverse=True,
+        )
+        priorities = {
+            provider.name: PRIORITY_STEP - (index * PRIORITY_STEP)
             for index, provider in enumerate(ordered)
+        }
+        providers = [
+            provider.model_copy(update={"priority": priorities[provider.name]})
+            for provider in self.providers
         ]
         return self.model_copy(update={"providers": providers})
 

@@ -8,6 +8,7 @@ import {
   Timer,
   Waves,
 } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 import {
   DistributionBarCard,
@@ -41,6 +42,28 @@ type OverviewViewProps = {
   onNavigate: (view: 'providers' | 'traffic') => void
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 24,
+    },
+  },
+}
 
 export function OverviewView({
   dashboard,
@@ -76,8 +99,13 @@ export function OverviewView({
   ]
 
   return (
-    <div className="page-stack">
-      <section className="hero-surface">
+    <motion.div 
+      className="page-stack"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.section variants={itemVariants} className="hero-surface">
         <div className="hero-copy">
           <span className="eyebrow">{messages.overview.eyebrow}</span>
           <h1>{messages.overview.heroTitle}</h1>
@@ -97,9 +125,9 @@ export function OverviewView({
             <ArrowRight size={16} />
           </button>
         </div>
-      </section>
+      </motion.section>
 
-      <section className="kpi-grid">
+      <motion.section variants={itemVariants} className="kpi-grid">
         <article className="kpi-card">
           <div className="kpi-head">
             <span className="surface-label">{messages.overview.primaryProvider}</span>
@@ -153,9 +181,9 @@ export function OverviewView({
           <strong>{dashboard.stats.global.served_requests}</strong>
           <p>{messages.overview.servedRequestsCopy}</p>
         </article>
-      </section>
+      </motion.section>
 
-      <section className="surface-card">
+      <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
           <div>
             <span className="eyebrow">{messages.overview.chartsEyebrow}</span>
@@ -233,9 +261,9 @@ export function OverviewView({
             />
           </div>
         )}
-      </section>
+      </motion.section>
 
-      <section className="split-grid">
+      <motion.section variants={itemVariants} className="split-grid">
         <article className="surface-card">
           <div className="section-header">
             <div>
@@ -315,9 +343,9 @@ export function OverviewView({
             </div>
           )}
         </article>
-      </section>
+      </motion.section>
 
-      <section className="surface-card">
+      <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
           <div>
             <span className="eyebrow">{messages.overview.providersEyebrow}</span>
@@ -382,7 +410,7 @@ export function OverviewView({
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

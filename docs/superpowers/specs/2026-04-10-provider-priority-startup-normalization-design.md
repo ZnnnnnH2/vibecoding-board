@@ -4,7 +4,7 @@
 Ensure provider priorities are normalized automatically when the backend starts so routing order is stable and the persisted config matches the effective runtime order.
 
 The new behavior should:
-- sort providers by their current `priority` value, where smaller numbers remain more preferred
+- sort providers by their current `priority` value in descending order before renumbering
 - reassign priorities as `10, 0, -10, -20 ...`
 - write the normalized priorities back to `config.yaml` during startup when the loaded config is not already normalized
 - preserve existing runtime routing semantics and admin mutation APIs
@@ -30,8 +30,8 @@ This keeps the behavior at the runtime boundary where startup activation already
 ## Normalization Rules
 
 Input ordering:
-- sort providers by current `priority` ascending
-- break ties by provider name, matching existing runtime selection behavior
+- sort providers by current `priority` descending before renumbering
+- break ties by provider name descending so the final normalized routing order still matches the current `(priority asc, name asc)` selection behavior
 
 Output numbering:
 - first provider gets `10`
@@ -60,7 +60,7 @@ Why this layer:
 ## Compatibility and Edge Cases
 
 - Negative priorities remain valid input. They only affect the initial sort order before normalization.
-- Duplicate priorities remain valid input. Ties are resolved by provider name, consistent with current selection logic.
+- Duplicate priorities remain valid input. Ties are resolved so the final normalized routing order stays consistent with the current selection logic.
 - Manual admin priority updates still write the requested value immediately. The next restart may renumber providers again based on the saved numeric order.
 - Existing configs remain loadable without schema changes.
 
@@ -80,6 +80,6 @@ Backend tests:
 ## Approval State
 This design reflects the user-approved direction on 2026-04-10:
 - normalize on backend startup
-- sort by current `priority` numeric value
+- sort by current `priority` numeric value in descending order before renumbering
 - assign normalized priorities as `10, 0, -10, -20 ...`
 - write the normalized priorities back to `config.yaml`

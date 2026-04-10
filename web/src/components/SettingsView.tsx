@@ -1,4 +1,5 @@
 import { ShieldAlert } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 import { useI18n } from '../i18n'
 
@@ -12,6 +13,32 @@ type SettingsViewProps = {
   onSubmit: () => void
 }
 
+const containerVariants = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 30,
+      staggerChildren: 0.05,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 24,
+    },
+  },
+}
 
 export function SettingsView({ form, busy, onChange, onSubmit }: SettingsViewProps) {
   const { messages } = useI18n()
@@ -24,8 +51,13 @@ export function SettingsView({ form, busy, onChange, onSubmit }: SettingsViewPro
   }
 
   return (
-    <div className="page-stack">
-      <section className="surface-card">
+    <motion.div 
+      className="page-stack"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
           <div>
             <span className="eyebrow">{messages.settings.eyebrow}</span>
@@ -107,7 +139,7 @@ export function SettingsView({ form, busy, onChange, onSubmit }: SettingsViewPro
             </ul>
           </section>
         </div>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

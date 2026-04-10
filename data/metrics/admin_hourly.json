@@ -1,5 +1,5 @@
 {
-  "last_flushed_at": "2026-04-08T09:57:06.417520+08:00",
+  "last_flushed_at": "2026-04-10T08:31:52.789520+08:00",
   "retention_hours": 720,
   "buckets": [
     {
@@ -26,23 +26,599 @@
     },
     {
       "bucket_start": "2026-04-08T09:00:00+08:00",
-      "requests": 103,
-      "success_count": 97,
+      "requests": 117,
+      "success_count": 111,
       "interrupted_count": 6,
       "error_count": 0,
-      "total_tokens": 8276446,
-      "duration_sum_ms": 3687875,
-      "duration_count": 103,
-      "ttfb_sum_ms": 357088,
-      "ttfb_count": 103,
+      "total_tokens": 11996748,
+      "duration_sum_ms": 4080314,
+      "duration_count": 117,
+      "ttfb_sum_ms": 429153,
+      "ttfb_count": 117,
       "providers": {
         "relay_998": {
           "requests": 45,
           "total_tokens": 1386403
         },
         "relay_asxs": {
-          "requests": 58,
-          "total_tokens": 6890043
+          "requests": 72,
+          "total_tokens": 10610345
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T10:00:00+08:00",
+      "requests": 76,
+      "success_count": 51,
+      "interrupted_count": 25,
+      "error_count": 0,
+      "total_tokens": 28349514,
+      "duration_sum_ms": 1973038,
+      "duration_count": 76,
+      "ttfb_sum_ms": 860049,
+      "ttfb_count": 76,
+      "providers": {
+        "relay_asxs": {
+          "requests": 59,
+          "total_tokens": 21193340
+        },
+        "relay_998": {
+          "requests": 17,
+          "total_tokens": 7156174
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T11:00:00+08:00",
+      "requests": 5,
+      "success_count": 3,
+      "interrupted_count": 2,
+      "error_count": 0,
+      "total_tokens": 2217846,
+      "duration_sum_ms": 85028,
+      "duration_count": 5,
+      "ttfb_sum_ms": 47204,
+      "ttfb_count": 5,
+      "providers": {
+        "relay_998": {
+          "requests": 5,
+          "total_tokens": 2217846
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T14:00:00+08:00",
+      "requests": 289,
+      "success_count": 209,
+      "interrupted_count": 19,
+      "error_count": 61,
+      "total_tokens": 28802546,
+      "duration_sum_ms": 3708293,
+      "duration_count": 289,
+      "ttfb_sum_ms": 638815,
+      "ttfb_count": 289,
+      "providers": {
+        "relay_asxs": {
+          "requests": 274,
+          "total_tokens": 28645911
+        },
+        "relay_998": {
+          "requests": 15,
+          "total_tokens": 156635
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T15:00:00+08:00",
+      "requests": 254,
+      "success_count": 124,
+      "interrupted_count": 10,
+      "error_count": 120,
+      "total_tokens": 14092423,
+      "duration_sum_ms": 5326508,
+      "duration_count": 254,
+      "ttfb_sum_ms": 1162784,
+      "ttfb_count": 221,
+      "providers": {
+        "relay_998": {
+          "requests": 208,
+          "total_tokens": 13826774
+        },
+        "relay_asxs": {
+          "requests": 10,
+          "total_tokens": 265649
+        },
+        "relay_qun": {
+          "requests": 3,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T16:00:00+08:00",
+      "requests": 6,
+      "success_count": 5,
+      "interrupted_count": 0,
+      "error_count": 1,
+      "total_tokens": 1007640,
+      "duration_sum_ms": 186214,
+      "duration_count": 6,
+      "ttfb_sum_ms": 18926,
+      "ttfb_count": 5,
+      "providers": {
+        "relay_998": {
+          "requests": 5,
+          "total_tokens": 1007640
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T17:00:00+08:00",
+      "requests": 73,
+      "success_count": 45,
+      "interrupted_count": 1,
+      "error_count": 27,
+      "total_tokens": 5902976,
+      "duration_sum_ms": 2985512,
+      "duration_count": 73,
+      "ttfb_sum_ms": 271330,
+      "ttfb_count": 73,
+      "providers": {
+        "relay_998": {
+          "requests": 62,
+          "total_tokens": 3921460
+        },
+        "relay_asxs": {
+          "requests": 11,
+          "total_tokens": 1981516
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T18:00:00+08:00",
+      "requests": 202,
+      "success_count": 130,
+      "interrupted_count": 11,
+      "error_count": 61,
+      "total_tokens": 21286275,
+      "duration_sum_ms": 3663161,
+      "duration_count": 202,
+      "ttfb_sum_ms": 939391,
+      "ttfb_count": 202,
+      "providers": {
+        "relay_998": {
+          "requests": 93,
+          "total_tokens": 5328840
+        },
+        "relay_asxs": {
+          "requests": 109,
+          "total_tokens": 15957435
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T19:00:00+08:00",
+      "requests": 141,
+      "success_count": 88,
+      "interrupted_count": 11,
+      "error_count": 42,
+      "total_tokens": 25946275,
+      "duration_sum_ms": 2823492,
+      "duration_count": 141,
+      "ttfb_sum_ms": 1057317,
+      "ttfb_count": 141,
+      "providers": {
+        "relay_asxs": {
+          "requests": 118,
+          "total_tokens": 25946275
+        },
+        "relay_998": {
+          "requests": 23,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T20:00:00+08:00",
+      "requests": 84,
+      "success_count": 71,
+      "interrupted_count": 13,
+      "error_count": 0,
+      "total_tokens": 31583655,
+      "duration_sum_ms": 1532466,
+      "duration_count": 84,
+      "ttfb_sum_ms": 345405,
+      "ttfb_count": 84,
+      "providers": {
+        "relay_asxs": {
+          "requests": 84,
+          "total_tokens": 31583655
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T21:00:00+08:00",
+      "requests": 165,
+      "success_count": 115,
+      "interrupted_count": 27,
+      "error_count": 23,
+      "total_tokens": 54912901,
+      "duration_sum_ms": 2750978,
+      "duration_count": 165,
+      "ttfb_sum_ms": 1048237,
+      "ttfb_count": 163,
+      "providers": {
+        "relay_asxs": {
+          "requests": 141,
+          "total_tokens": 53037433
+        },
+        "relay_998": {
+          "requests": 22,
+          "total_tokens": 1875468
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T22:00:00+08:00",
+      "requests": 101,
+      "success_count": 83,
+      "interrupted_count": 15,
+      "error_count": 3,
+      "total_tokens": 21900845,
+      "duration_sum_ms": 3316776,
+      "duration_count": 101,
+      "ttfb_sum_ms": 2733530,
+      "ttfb_count": 99,
+      "providers": {
+        "relay_998": {
+          "requests": 98,
+          "total_tokens": 21900845
+        },
+        "relay_asxs": {
+          "requests": 1,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-08T23:00:00+08:00",
+      "requests": 33,
+      "success_count": 14,
+      "interrupted_count": 3,
+      "error_count": 16,
+      "total_tokens": 4369935,
+      "duration_sum_ms": 848592,
+      "duration_count": 33,
+      "ttfb_sum_ms": 441212,
+      "ttfb_count": 17,
+      "providers": {
+        "relay_998": {
+          "requests": 17,
+          "total_tokens": 4369935
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T00:00:00+08:00",
+      "requests": 2,
+      "success_count": 2,
+      "interrupted_count": 0,
+      "error_count": 0,
+      "total_tokens": 0,
+      "duration_sum_ms": 111424,
+      "duration_count": 2,
+      "ttfb_sum_ms": 111365,
+      "ttfb_count": 2,
+      "providers": {
+        "relay_998": {
+          "requests": 2,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T01:00:00+08:00",
+      "requests": 33,
+      "success_count": 17,
+      "interrupted_count": 3,
+      "error_count": 13,
+      "total_tokens": 5753051,
+      "duration_sum_ms": 734918,
+      "duration_count": 33,
+      "ttfb_sum_ms": 495622,
+      "ttfb_count": 33,
+      "providers": {
+        "relay_998": {
+          "requests": 33,
+          "total_tokens": 5753051
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T02:00:00+08:00",
+      "requests": 2,
+      "success_count": 0,
+      "interrupted_count": 0,
+      "error_count": 2,
+      "total_tokens": 0,
+      "duration_sum_ms": 4521,
+      "duration_count": 2,
+      "ttfb_sum_ms": 4521,
+      "ttfb_count": 2,
+      "providers": {
+        "relay_998": {
+          "requests": 2,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T03:00:00+08:00",
+      "requests": 1,
+      "success_count": 0,
+      "interrupted_count": 0,
+      "error_count": 1,
+      "total_tokens": 0,
+      "duration_sum_ms": 34451,
+      "duration_count": 1,
+      "ttfb_sum_ms": 34451,
+      "ttfb_count": 1,
+      "providers": {
+        "relay_998": {
+          "requests": 1,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T05:00:00+08:00",
+      "requests": 1,
+      "success_count": 0,
+      "interrupted_count": 0,
+      "error_count": 1,
+      "total_tokens": 0,
+      "duration_sum_ms": 23564,
+      "duration_count": 1,
+      "ttfb_sum_ms": 23564,
+      "ttfb_count": 1,
+      "providers": {
+        "relay_998": {
+          "requests": 1,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T09:00:00+08:00",
+      "requests": 1,
+      "success_count": 0,
+      "interrupted_count": 0,
+      "error_count": 1,
+      "total_tokens": 0,
+      "duration_sum_ms": 4199,
+      "duration_count": 1,
+      "ttfb_sum_ms": 4199,
+      "ttfb_count": 1,
+      "providers": {
+        "relay_998": {
+          "requests": 1,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T10:00:00+08:00",
+      "requests": 122,
+      "success_count": 1,
+      "interrupted_count": 110,
+      "error_count": 11,
+      "total_tokens": 12437820,
+      "duration_sum_ms": 3138618,
+      "duration_count": 122,
+      "ttfb_sum_ms": 1543755,
+      "ttfb_count": 117,
+      "providers": {
+        "codexeasy": {
+          "requests": 112,
+          "total_tokens": 12306601
+        },
+        "relay_998": {
+          "requests": 5,
+          "total_tokens": 131219
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T11:00:00+08:00",
+      "requests": 41,
+      "success_count": 35,
+      "interrupted_count": 4,
+      "error_count": 2,
+      "total_tokens": 2403337,
+      "duration_sum_ms": 1029909,
+      "duration_count": 41,
+      "ttfb_sum_ms": 293811,
+      "ttfb_count": 39,
+      "providers": {
+        "relay_998": {
+          "requests": 5,
+          "total_tokens": 0
+        },
+        "relay_asxs": {
+          "requests": 34,
+          "total_tokens": 2403337
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T13:00:00+08:00",
+      "requests": 16,
+      "success_count": 14,
+      "interrupted_count": 2,
+      "error_count": 0,
+      "total_tokens": 2485318,
+      "duration_sum_ms": 332494,
+      "duration_count": 16,
+      "ttfb_sum_ms": 41195,
+      "ttfb_count": 16,
+      "providers": {
+        "relay_asxs": {
+          "requests": 16,
+          "total_tokens": 2485318
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T14:00:00+08:00",
+      "requests": 155,
+      "success_count": 146,
+      "interrupted_count": 9,
+      "error_count": 0,
+      "total_tokens": 37982632,
+      "duration_sum_ms": 4681838,
+      "duration_count": 155,
+      "ttfb_sum_ms": 541032,
+      "ttfb_count": 155,
+      "providers": {
+        "relay_asxs": {
+          "requests": 155,
+          "total_tokens": 37982632
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T15:00:00+08:00",
+      "requests": 72,
+      "success_count": 69,
+      "interrupted_count": 1,
+      "error_count": 2,
+      "total_tokens": 16678457,
+      "duration_sum_ms": 4574993,
+      "duration_count": 72,
+      "ttfb_sum_ms": 775279,
+      "ttfb_count": 72,
+      "providers": {
+        "relay_asxs": {
+          "requests": 27,
+          "total_tokens": 3575702
+        },
+        "misdazzling": {
+          "requests": 43,
+          "total_tokens": 13102755
+        },
+        "relay_998": {
+          "requests": 2,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T16:00:00+08:00",
+      "requests": 95,
+      "success_count": 92,
+      "interrupted_count": 2,
+      "error_count": 1,
+      "total_tokens": 12746822,
+      "duration_sum_ms": 4176181,
+      "duration_count": 95,
+      "ttfb_sum_ms": 351790,
+      "ttfb_count": 94,
+      "providers": {
+        "misdazzling": {
+          "requests": 66,
+          "total_tokens": 7068767
+        },
+        "relay_asxs": {
+          "requests": 28,
+          "total_tokens": 5678055
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T17:00:00+08:00",
+      "requests": 91,
+      "success_count": 83,
+      "interrupted_count": 8,
+      "error_count": 0,
+      "total_tokens": 31428171,
+      "duration_sum_ms": 5199719,
+      "duration_count": 91,
+      "ttfb_sum_ms": 656542,
+      "ttfb_count": 91,
+      "providers": {
+        "relay_asxs": {
+          "requests": 90,
+          "total_tokens": 30934232
+        },
+        "misdazzling": {
+          "requests": 1,
+          "total_tokens": 493939
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T18:00:00+08:00",
+      "requests": 60,
+      "success_count": 53,
+      "interrupted_count": 7,
+      "error_count": 0,
+      "total_tokens": 19614969,
+      "duration_sum_ms": 3931881,
+      "duration_count": 60,
+      "ttfb_sum_ms": 2229302,
+      "ttfb_count": 60,
+      "providers": {
+        "relay_asxs": {
+          "requests": 35,
+          "total_tokens": 7455147
+        },
+        "misdazzling": {
+          "requests": 25,
+          "total_tokens": 12159822
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-09T19:00:00+08:00",
+      "requests": 36,
+      "success_count": 11,
+      "interrupted_count": 1,
+      "error_count": 24,
+      "total_tokens": 4937507,
+      "duration_sum_ms": 977566,
+      "duration_count": 36,
+      "ttfb_sum_ms": 638394,
+      "ttfb_count": 36,
+      "providers": {
+        "misdazzling": {
+          "requests": 7,
+          "total_tokens": 3619016
+        },
+        "relay_asxs": {
+          "requests": 26,
+          "total_tokens": 1318491
+        },
+        "relay_998": {
+          "requests": 3,
+          "total_tokens": 0
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-10T08:00:00+08:00",
+      "requests": 39,
+      "success_count": 36,
+      "interrupted_count": 3,
+      "error_count": 0,
+      "total_tokens": 2776799,
+      "duration_sum_ms": 624763,
+      "duration_count": 39,
+      "ttfb_sum_ms": 111975,
+      "ttfb_count": 39,
+      "providers": {
+        "aiapis": {
+          "requests": 39,
+          "total_tokens": 2776799
         }
       }
     }

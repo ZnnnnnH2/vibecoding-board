@@ -1,5 +1,6 @@
 import { Search, SlidersHorizontal } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
+import { motion } from 'framer-motion'
 
 import {
   findProviderStats,
@@ -31,6 +32,32 @@ type ProvidersViewProps = {
   onPrioritySave: (provider: ProviderSummary, priority: number) => Promise<boolean>
 }
 
+const containerVariants = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 30,
+      staggerChildren: 0.05,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 24,
+    },
+  },
+}
 
 export function ProvidersView({
   dashboard,
@@ -79,8 +106,13 @@ export function ProvidersView({
   }
 
   return (
-    <div className="page-stack">
-      <section className="surface-card">
+    <motion.div 
+      className="page-stack"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
           <div>
             <span className="eyebrow">{messages.providers.eyebrow}</span>
@@ -286,7 +318,7 @@ export function ProvidersView({
             </table>
           </div>
         )}
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

@@ -209,6 +209,114 @@ def test_dashboard_primary_provider_stays_config_preferred_during_cooldown(works
     assert relay_a["cooldown_until"] is not None
 
 
+def test_startup_normalizes_provider_priorities_and_writes_config(workspace_tmp_dir: Path) -> None:
+    config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                },
+                {
+                    "name": "relay_b",
+                    "base_url": "https://relay-b.example.com/v1",
+                    "api_key": "key-b",
+                    "enabled": True,
+                    "priority": 20,
+                    "models": ["gpt-4.1", "gpt-4o-mini"],
+                    "timeout_seconds": 20,
+                    "max_failures": 3,
+                    "cooldown_seconds": 45,
+                },
+                {
+                    "name": "relay_c",
+                    "base_url": "https://relay-c.example.com/v1",
+                    "api_key": "key-c",
+                    "enabled": True,
+                    "priority": 30,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 25,
+                    "max_failures": 3,
+                    "cooldown_seconds": 45,
+                },
+            ],
+        }
+    )
+    config_path = write_config(workspace_tmp_dir, config)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.get("/admin/api/dashboard")
+
+        assert response.status_code == 200
+        assert response.json()["primary_provider"] == "relay_a"
+
+    saved = load_proxy_config(config_path)
+    assert [provider.priority for provider in saved.providers] == [-10, 0, 10]
+    assert [provider.name for provider in sorted(saved.providers, key=lambda p: p.priority)] == [
+        "relay_a",
+        "relay_b",
+        "relay_c",
+    ]
+
+
+def test_startup_normalization_preserves_routing_order_for_requests(workspace_tmp_dir: Path) -> None:
+    config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 30,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                },
+                {
+                    "name": "relay_b",
+                    "base_url": "https://relay-b.example.com/v1",
+                    "api_key": "key-b",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1", "gpt-4o-mini"],
+                    "timeout_seconds": 20,
+                    "max_failures": 3,
+                    "cooldown_seconds": 45,
+                },
+            ],
+        }
+    )
+    config_path = write_config(workspace_tmp_dir, config)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["choices"][0]["message"]["content"] == "relay-b.example.com"
+
+    saved = load_proxy_config(config_path)
+    relay_a = next(provider for provider in saved.providers if provider.name == "relay_a")
+    relay_b = next(provider for provider in saved.providers if provider.name == "relay_b")
+    assert relay_a.priority == 10
+    assert relay_b.priority == 0
+
+
 def test_patch_retry_policy_updates_runtime_and_config(workspace_tmp_dir: Path) -> None:
     config_path = write_config(workspace_tmp_dir)
     app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
@@ -313,7 +421,7 @@ def test_update_provider_priority_writes_config_and_changes_routing(workspace_tm
                 "base_url": "https://relay-b.example.com/v1",
                 "api_key": "",
                 "enabled": True,
-                "priority": 5,
+                "priority": -5,
                 "models": ["gpt-4.1", "gpt-4o-mini"],
                 "healthcheck_model": None,
                 "timeout_seconds": 20,
@@ -351,7 +459,7 @@ def test_patch_provider_priority_writes_config_and_changes_routing(workspace_tmp
 
         updated = client.patch(
             "/admin/api/providers/relay_b/priority",
-            json={"priority": 5},
+            json={"priority": -5},
         )
 
         assert updated.status_code == 200
@@ -365,7 +473,7 @@ def test_patch_provider_priority_writes_config_and_changes_routing(workspace_tmp
 
     saved = load_proxy_config(config_path)
     relay_b = next(provider for provider in saved.providers if provider.name == "relay_b")
-    assert relay_b.priority == 5
+    assert relay_b.priority == -5
 
 
 def test_update_provider_accepts_negative_priority_round_trip(workspace_tmp_dir: Path) -> None:

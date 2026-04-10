@@ -44,8 +44,11 @@ class RuntimeManager:
         self._healthchecks: dict[str, HealthcheckSnapshot] = {}
 
     async def initialize(self) -> RuntimeSnapshot:
-        config = self.config_store.load()
+        loaded_config = self.config_store.load()
+        config = loaded_config.normalized()
         runtime = await self._build_runtime(config, previous=self._runtime)
+        if loaded_config.model_dump(mode="python") != config.model_dump(mode="python"):
+            self.config_store.save(config)
         self._runtime = runtime
         return runtime
 
