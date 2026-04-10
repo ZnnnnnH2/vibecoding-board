@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from vibecoding_board.admin_i18n import admin_message, resolve_admin_locale, translate_admin_error
-from vibecoding_board.config import ProviderConfig, RetryPolicyConfig
+from vibecoding_board.config import HealthcheckConfig, ProviderConfig, RetryPolicyConfig
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
 
@@ -96,6 +96,15 @@ class RetryPolicyUpdatePayload(BaseModel):
         )
 
 
+class HealthcheckUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stream: bool
+
+    def to_healthcheck_config(self) -> HealthcheckConfig:
+        return HealthcheckConfig(stream=self.stream)
+
+
 def build_admin_router() -> APIRouter:
     router = APIRouter(prefix="/admin/api", tags=["admin"])
 
@@ -156,6 +165,24 @@ def build_admin_router() -> APIRouter:
             manager,
             request_log_store,
             admin_message(locale, "updated_retry_policy"),
+        )
+
+    @router.patch("/healthcheck-settings")
+    async def update_healthcheck_settings(payload: HealthcheckUpdatePayload, request: Request):
+        locale = resolve_admin_locale(request)
+        manager = get_manager(request)
+        request_log_store = get_request_log_store(request)
+        try:
+            await manager.update_healthcheck(payload.to_healthcheck_config())
+        except RuntimeMutationError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "updated_healthcheck_settings"),
         )
 
     @router.post("/providers")

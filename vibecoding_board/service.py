@@ -170,11 +170,12 @@ class ProxyService:
             )
 
         url = join_upstream_url(runtime_provider.base_url, "/v1/chat/completions")
+        stream = runtime.config.healthcheck.stream
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": "healthcheck"}],
             "max_tokens": 1,
-            "stream": False,
+            "stream": stream,
         }
 
         started_at = perf_counter()
@@ -183,16 +184,36 @@ class ProxyService:
         error: str | None = None
 
         try:
-            response = await self.client.post(
-                url,
-                content=json.dumps(payload).encode("utf-8"),
-                headers=build_direct_provider_headers(runtime_provider.api_key),
-                timeout=runtime_provider.timeout_seconds,
-            )
-            status_code = response.status_code
-            ok = 200 <= response.status_code < 300
-            if not ok:
-                error = self._extract_upstream_error_message(response)
+            if stream:
+                headers = build_direct_provider_headers(runtime_provider.api_key)
+                headers["accept"] = "text/event-stream"
+                request = self.client.build_request(
+                    "POST",
+                    url,
+                    content=json.dumps(payload).encode("utf-8"),
+                    headers=headers,
+                    timeout=runtime_provider.timeout_seconds,
+                )
+                response = await self.client.send(request, stream=True)
+                try:
+                    status_code = response.status_code
+                    if 200 <= response.status_code < 300:
+                        ok, error = await self._validate_healthcheck_stream(response)
+                    else:
+                        error = await self._extract_upstream_error_message_from_stream(response)
+                finally:
+                    await response.aclose()
+            else:
+                response = await self.client.post(
+                    url,
+                    content=json.dumps(payload).encode("utf-8"),
+                    headers=build_direct_provider_headers(runtime_provider.api_key),
+                    timeout=runtime_provider.timeout_seconds,
+                )
+                status_code = response.status_code
+                ok = 200 <= response.status_code < 300
+                if not ok:
+                    error = self._extract_upstream_error_message(response)
         except httpx.HTTPError as exc:
             error = str(exc)
 
@@ -202,6 +223,7 @@ class ProxyService:
             ok=ok,
             status_code=status_code,
             latency_ms=latency_ms,
+            stream=stream,
             model=model,
             error=error,
         )
@@ -210,6 +232,7 @@ class ProxyService:
             "ok": ok,
             "status_code": status_code,
             "latency_ms": latency_ms,
+            "stream": stream,
             "model": model,
             "error": error,
         }
@@ -757,17 +780,41 @@ class ProxyService:
 
     @staticmethod
     def _extract_upstream_error_message(response: httpx.Response) -> str | None:
+        return ProxyService._extract_upstream_error_message_from_bytes(
+            response.content,
+            response.status_code,
+        )
+
+    @staticmethod
+    def _extract_upstream_error_message_from_bytes(body: bytes, status_code: int) -> str | None:
         try:
-            payload = response.json()
-        except json.JSONDecodeError:
-            return f"Upstream returned status {response.status_code}."
+            payload = json.loads(body)
+        except (TypeError, json.JSONDecodeError):
+            return f"Upstream returned status {status_code}."
         if isinstance(payload, dict):
             error = payload.get("error")
             if isinstance(error, dict) and isinstance(error.get("message"), str):
                 return error["message"]
             if isinstance(error, str):
                 return error
-        return f"Upstream returned status {response.status_code}."
+        return f"Upstream returned status {status_code}."
+
+    @staticmethod
+    async def _extract_upstream_error_message_from_stream(response: httpx.Response) -> str | None:
+        return ProxyService._extract_upstream_error_message_from_bytes(
+            await response.aread(),
+            response.status_code,
+        )
+
+    @staticmethod
+    async def _validate_healthcheck_stream(response: httpx.Response) -> tuple[bool, str | None]:
+        try:
+            async for chunk in response.aiter_raw():
+                if chunk:
+                    return True, None
+        except httpx.HTTPError as exc:
+            return False, str(exc)
+        return False, "Upstream returned an empty stream."
 
 
 class StreamUsageParser:

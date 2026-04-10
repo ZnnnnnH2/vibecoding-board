@@ -11,6 +11,8 @@ import {
 } from '../format'
 import { useI18n } from '../i18n'
 
+import { DropdownSelect } from './DropdownSelect'
+
 import type { RecentRequest } from '../types'
 
 
@@ -103,41 +105,38 @@ export function TrafficView({ requests }: TrafficViewProps) {
             />
           </label>
 
-          <label className="select-field">
-            <select
-              value={kindFilter}
-              onChange={(event) => setKindFilter(event.target.value as RequestKindFilter)}
-            >
-              <option value="all">{messages.traffic.allKinds}</option>
-              <option value="chat">{messages.traffic.chat}</option>
-              <option value="response">{messages.traffic.response}</option>
-            </select>
-          </label>
+          <DropdownSelect
+            value={kindFilter}
+            onChange={(val) => setKindFilter(val as RequestKindFilter)}
+            options={[
+              { value: 'all', label: messages.traffic.allKinds },
+              { value: 'chat', label: messages.traffic.chat },
+              { value: 'response', label: messages.traffic.response },
+            ]}
+          />
 
-          <label className="select-field">
-            <select
-              value={stateFilter}
-              onChange={(event) => setStateFilter(event.target.value as RequestStateFilter)}
-            >
-              <option value="all">{messages.traffic.allStates}</option>
-              <option value="pending">{messages.traffic.pending}</option>
-              <option value="success">{messages.traffic.success}</option>
-              <option value="error">{messages.traffic.failed}</option>
-              <option value="interrupted">{messages.traffic.interrupted}</option>
-            </select>
-          </label>
+          <DropdownSelect
+            value={stateFilter}
+            onChange={(val) => setStateFilter(val as RequestStateFilter)}
+            options={[
+              { value: 'all', label: messages.traffic.allStates },
+              { value: 'pending', label: messages.traffic.pending },
+              { value: 'success', label: messages.traffic.success },
+              { value: 'error', label: messages.traffic.failed },
+              { value: 'interrupted', label: messages.traffic.interrupted },
+            ]}
+          />
 
-          <label className="select-field">
-            <span className="surface-label">{messages.traffic.rowLimit}</span>
-            <select
-              value={rowLimit}
-              onChange={(event) => setRowLimit(Number(event.target.value) as 10 | 50)}
-              aria-label={messages.traffic.rowLimit}
-            >
-              <option value={10}>{messages.traffic.first10}</option>
-              <option value={50}>{messages.traffic.first50}</option>
-            </select>
-          </label>
+          <DropdownSelect
+            value={rowLimit}
+            onChange={(val) => setRowLimit(val as 10 | 50)}
+            options={[
+              { value: 10, label: messages.traffic.first10 },
+              { value: 50, label: messages.traffic.first50 },
+            ]}
+            prefixLabel={messages.traffic.rowLimit}
+            ariaLabel={messages.traffic.rowLimit}
+          />
         </div>
 
         {filteredRequests.length === 0 ? (

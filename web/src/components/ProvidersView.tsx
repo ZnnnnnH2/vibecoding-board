@@ -17,6 +17,8 @@ import {
 } from '../format'
 import { useI18n } from '../i18n'
 
+import { DropdownSelect } from './DropdownSelect'
+
 import type { DashboardResponse, ProviderSummary } from '../types'
 
 
@@ -144,19 +146,18 @@ export function ProvidersView({
             <span>{messages.providers.enabledOnly}</span>
           </label>
 
-          <label className="select-field">
-            <SlidersHorizontal size={16} />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as ProviderFilter)}
-            >
-              <option value="all">{messages.providers.allStates}</option>
-              <option value="ready">{messages.providers.ready}</option>
-              <option value="cooling">{messages.providers.cooling}</option>
-              <option value="disabled">{messages.providers.disabled}</option>
-              <option value="unsteady">{messages.providers.unsteady}</option>
-            </select>
-          </label>
+          <DropdownSelect
+            value={statusFilter}
+            onChange={(val) => setStatusFilter(val as ProviderFilter)}
+            options={[
+              { value: 'all', label: messages.providers.allStates },
+              { value: 'ready', label: messages.providers.ready },
+              { value: 'cooling', label: messages.providers.cooling },
+              { value: 'disabled', label: messages.providers.disabled },
+              { value: 'unsteady', label: messages.providers.unsteady },
+            ]}
+            icon={<SlidersHorizontal size={16} />}
+          />
         </div>
 
         {visibleProviders.length === 0 ? (

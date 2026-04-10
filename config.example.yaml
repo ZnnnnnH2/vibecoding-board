@@ -18,6 +18,12 @@ retry_policy:
   same_provider_retry_count: 0
   retry_interval_ms: 0
 
+# Manual healthcheck settings / 手动健康检查设置
+healthcheck:
+  # When true, manual health checks use stream=true and only succeed after the first chunk arrives.
+  # 为 true 时，手动健康检查会使用 stream=true，并在收到首个 chunk 后才判定成功。
+  stream: false
+
 # Upstream providers / 上游 Provider 列表
 providers:
   # Explicit model provider / 显式模型 Provider

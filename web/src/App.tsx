@@ -28,9 +28,17 @@ import {
   resolveLocale,
   saveLocalePreference,
 } from './i18n'
+import {
+  getSystemTheme,
+  loadThemePreference,
+  resolveTheme,
+  saveThemePreference,
+} from './theme'
+import { DropdownSelect } from './components/DropdownSelect'
 
 import type {
   DashboardResponse,
+  HealthcheckSettingsFormState,
   HealthcheckSummary,
   MetricsResponse,
   MetricsWindow,
@@ -39,6 +47,7 @@ import type {
   RetryPolicyFormState,
 } from './types'
 import type { LocalePreference } from './i18n'
+import type { ResolvedTheme, ThemePreference } from './theme'
 
 type AdminView = 'overview' | 'providers' | 'traffic' | 'settings'
 
@@ -73,6 +82,7 @@ const emptyHealthcheck: HealthcheckSummary = {
   ok: null,
   status_code: null,
   latency_ms: null,
+  stream: null,
   model: null,
   error: null,
 }
@@ -116,6 +126,13 @@ function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicy
 }
 
 
+function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): HealthcheckSettingsFormState {
+  return {
+    stream: dashboard?.healthcheck.stream ?? false,
+  }
+}
+
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
@@ -125,14 +142,19 @@ export default function App() {
   const [editingProvider, setEditingProvider] = useState<ProviderSummary | null>(null)
   const [form, setForm] = useState<ProviderFormState>(emptyForm)
   const [retryPolicyForm, setRetryPolicyForm] = useState<RetryPolicyFormState>(() => createRetryPolicyForm(null))
+  const [healthcheckForm, setHealthcheckForm] = useState<HealthcheckSettingsFormState>(() =>
+    createHealthcheckSettingsForm(null),
+  )
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastNotification[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
-  const [theme, setTheme] = useState<'dark' | 'light'>('light')
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference())
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme())
   const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
   const activeRequestControllerRef = useRef<AbortController | null>(null)
   const toastIdRef = useRef(0)
+  const theme = resolveTheme(themePreference, systemTheme)
   const locale = resolveLocale(localePreference)
   const messages = messagesByLocale[locale]
 
@@ -160,6 +182,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    saveThemePreference(themePreference)
+  }, [themePreference])
 
   useEffect(() => {
     saveLocalePreference(localePreference)
@@ -266,10 +292,32 @@ export default function App() {
   }, [toasts])
 
   useEffect(() => {
+    if (themePreference !== 'auto' || typeof window === 'undefined') {
+      return undefined
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(event.matches ? 'dark' : 'light')
+    }
+
+    setSystemTheme(mediaQuery.matches ? 'dark' : 'light')
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => mediaQuery.removeListener(handleChange)
+  }, [themePreference])
+
+  useEffect(() => {
     if (!dashboard) {
       return
     }
     setRetryPolicyForm(createRetryPolicyForm(dashboard))
+    setHealthcheckForm(createHealthcheckSettingsForm(dashboard))
   }, [dashboard])
 
   async function runMutation(
@@ -355,6 +403,7 @@ export default function App() {
       openHealthcheckDialog(provider.name, {
         ...emptyHealthcheck,
         ok: false,
+        stream: dashboard?.healthcheck.stream ?? null,
         error: error instanceof Error ? error.message : messages.app.actionFailed,
       })
     } finally {
@@ -380,6 +429,10 @@ export default function App() {
 
   async function handleRetryPolicySubmit() {
     await runMutation('retry-policy', () => api.updateRetryPolicy(retryPolicyForm))
+  }
+
+  async function handleHealthcheckSettingsSubmit() {
+    await runMutation('healthcheck-settings', () => api.updateHealthcheckSettings(healthcheckForm))
   }
 
   const proxyBase =
@@ -476,19 +529,18 @@ export default function App() {
             </div>
 
             <div className="header-actions">
-              <label className="select-field locale-select">
-                <Globe2 size={16} />
-                <span className="surface-label">{messages.locale.label}</span>
-                <select
-                  value={localePreference}
-                  onChange={(event) => setLocalePreference(event.target.value as LocalePreference)}
-                  aria-label={messages.locale.label}
-                >
-                  <option value="auto">{messages.locale.auto}</option>
-                  <option value="zh-CN">{messages.locale.chinese}</option>
-                  <option value="en">{messages.locale.english}</option>
-                </select>
-              </label>
+              <DropdownSelect
+                value={localePreference}
+                onChange={(val) => setLocalePreference(val as LocalePreference)}
+                options={[
+                  { value: 'auto', label: messages.locale.auto },
+                  { value: 'zh-CN', label: messages.locale.chinese },
+                  { value: 'en', label: messages.locale.english },
+                ]}
+                icon={<Globe2 size={16} />}
+                prefixLabel={messages.locale.label}
+                ariaLabel={messages.locale.label}
+              />
 
               <button
                 type="button"
@@ -510,7 +562,9 @@ export default function App() {
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+                onClick={() => {
+                  setThemePreference(theme === 'dark' ? 'light' : 'dark')
+                }}
               >
                 {theme === 'dark' ? <SunMedium size={16} /> : <MoonStar size={16} />}
                 {theme === 'dark' ? messages.app.lightMode : messages.app.darkMode}
@@ -567,11 +621,17 @@ export default function App() {
             <TrafficView requests={dashboard.recent_requests} />
           ) : (
             <SettingsView
-              form={retryPolicyForm}
-              busy={busyAction === 'retry-policy'}
-              onChange={setRetryPolicyForm}
-              onSubmit={() => {
+              retryPolicyForm={retryPolicyForm}
+              retryPolicyBusy={busyAction === 'retry-policy'}
+              onRetryPolicyChange={setRetryPolicyForm}
+              onRetryPolicySubmit={() => {
                 void handleRetryPolicySubmit()
+              }}
+              healthcheckForm={healthcheckForm}
+              healthcheckBusy={busyAction === 'healthcheck-settings'}
+              onHealthcheckChange={setHealthcheckForm}
+              onHealthcheckSubmit={() => {
+                void handleHealthcheckSettingsSubmit()
               }}
             />
           )}

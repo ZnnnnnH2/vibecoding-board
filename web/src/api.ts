@@ -1,5 +1,6 @@
 import type {
   DashboardResponse,
+  HealthcheckSettingsFormState,
   MetricsResponse,
   MetricsWindow,
   MutationResponse,
@@ -154,6 +155,13 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
 }
 
 
+function buildHealthcheckSettingsPayload(form: HealthcheckSettingsFormState) {
+  return {
+    stream: form.stream,
+  }
+}
+
+
 export const api = {
   dashboard(signal?: AbortSignal): Promise<DashboardResponse> {
     return request<DashboardResponse>('/admin/api/dashboard', { signal })
@@ -215,6 +223,13 @@ export const api = {
     return request<MutationResponse>('/admin/api/retry-policy', {
       method: 'PATCH',
       body: JSON.stringify(buildRetryPolicyPayload(form)),
+    })
+  },
+
+  updateHealthcheckSettings(form: HealthcheckSettingsFormState): Promise<MutationResponse> {
+    return request<MutationResponse>('/admin/api/healthcheck-settings', {
+      method: 'PATCH',
+      body: JSON.stringify(buildHealthcheckSettingsPayload(form)),
     })
   },
 }

@@ -76,6 +76,12 @@ class RetryPolicyConfig(BaseModel):
         return set(self.retryable_status_codes)
 
 
+class HealthcheckConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stream: bool = False
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -173,6 +179,7 @@ class ProxyConfig(BaseModel):
 
     listen: ListenConfig = Field(default_factory=ListenConfig)
     retry_policy: RetryPolicyConfig = Field(default_factory=RetryPolicyConfig)
+    healthcheck: HealthcheckConfig = Field(default_factory=HealthcheckConfig)
     providers: list[ProviderConfig] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -249,6 +256,9 @@ def dump_example_config() -> dict[str, Any]:
             "retryable_status_codes": list(DEFAULT_RETRYABLE_STATUS_CODES),
             "same_provider_retry_count": 0,
             "retry_interval_ms": 0,
+        },
+        "healthcheck": {
+            "stream": False,
         },
         "providers": [
             {

@@ -8,7 +8,7 @@ import uuid
 import httpx
 import pytest
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.testclient import TestClient
 
 from vibecoding_board.app import create_app
@@ -66,6 +66,7 @@ def build_upstream_app(
     *,
     hold_started: Event | None = None,
     hold_release: Event | None = None,
+    captured_chat_requests: list[dict[str, object]] | None = None,
 ) -> FastAPI:
     app = FastAPI()
 
@@ -74,6 +75,15 @@ def build_upstream_app(
         host = request.url.hostname
         payload = await request.json()
         message = payload.get("messages", [{}])[0].get("content") if payload.get("messages") else None
+        if captured_chat_requests is not None:
+            captured_chat_requests.append(
+                {
+                    "host": host or "",
+                    "message": message,
+                    "model": payload.get("model"),
+                    "stream": bool(payload.get("stream")),
+                }
+            )
 
         if message == "retryable" and host == "relay-a.example.com":
             return JSONResponse(status_code=503, content={"error": "temporary unavailable"})
@@ -83,6 +93,18 @@ def build_upstream_app(
                 hold_started.set()
             if hold_release is not None:
                 await asyncio.to_thread(hold_release.wait, 2.0)
+        if payload.get("stream"):
+            async def event_stream():
+                yield (
+                    b'data: {"id":"chatcmpl-admin","object":"chat.completion.chunk","model":"'
+                    + str(payload["model"]).encode("utf-8")
+                    + b'","choices":[{"index":0,"delta":{"role":"assistant","content":"'
+                    + (host or "").encode("utf-8")
+                    + b'"}}]}\n\n'
+                )
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
         return JSONResponse(
             {
                 "id": "chatcmpl-admin",
@@ -153,6 +175,7 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
         assert payload["retry_policy"]["same_provider_retry_count"] == 0
         assert payload["retry_policy"]["retry_interval_ms"] == 0
+        assert payload["healthcheck"]["stream"] is False
 
 
 def test_dashboard_exposes_pending_requests_without_counting_them_in_stats(workspace_tmp_dir: Path) -> None:
@@ -336,11 +359,32 @@ def test_patch_retry_policy_updates_runtime_and_config(workspace_tmp_dir: Path) 
         assert payload["retry_policy"]["retryable_status_codes"] == [500, 503, 521, 522, 523, 524]
         assert payload["retry_policy"]["same_provider_retry_count"] == 2
         assert payload["retry_policy"]["retry_interval_ms"] == 250
+        assert payload["healthcheck"]["stream"] is False
 
     saved = load_proxy_config(config_path)
     assert saved.retry_policy.retryable_status_codes == [500, 503, 521, 522, 523, 524]
     assert saved.retry_policy.same_provider_retry_count == 2
     assert saved.retry_policy.retry_interval_ms == 250
+    assert saved.healthcheck.stream is False
+
+
+def test_patch_healthcheck_settings_updates_runtime_and_config(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/admin/api/healthcheck-settings",
+            json={"stream": True},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()["dashboard"]
+        assert payload["healthcheck"]["stream"] is True
+        assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
+
+    saved = load_proxy_config(config_path)
+    assert saved.healthcheck.stream is True
 
 
 def test_promote_provider_writes_config_and_changes_routing(workspace_tmp_dir: Path) -> None:
@@ -702,8 +746,35 @@ def test_manual_healthcheck_updates_provider_state_without_logging_request(works
         payload = response.json()["dashboard"]
         provider = next(item for item in payload["providers"] if item["name"] == "relay_a")
         assert provider["healthcheck"]["ok"] is True
+        assert provider["healthcheck"]["stream"] is False
         assert provider["healthcheck"]["model"] == "gpt-4.1"
         assert payload["recent_requests"] == []
+
+
+def test_manual_healthcheck_uses_streaming_mode_when_enabled(workspace_tmp_dir: Path) -> None:
+    captured_chat_requests: list[dict[str, object]] = []
+    app = create_app(
+        write_config(workspace_tmp_dir),
+        transport=httpx.ASGITransport(app=build_upstream_app(captured_chat_requests=captured_chat_requests)),
+    )
+
+    with TestClient(app) as client:
+        update_response = client.patch(
+            "/admin/api/healthcheck-settings",
+            json={"stream": True},
+        )
+        assert update_response.status_code == 200
+
+        response = client.post("/admin/api/providers/relay_a/healthcheck")
+
+        assert response.status_code == 200
+        payload = response.json()["dashboard"]
+        provider = next(item for item in payload["providers"] if item["name"] == "relay_a")
+        assert provider["healthcheck"]["ok"] is True
+        assert provider["healthcheck"]["stream"] is True
+        assert payload["recent_requests"] == []
+        assert captured_chat_requests[-1]["message"] == "healthcheck"
+        assert captured_chat_requests[-1]["stream"] is True
 
 
 def test_healthcheck_requires_model_for_wildcard_provider(workspace_tmp_dir: Path) -> None:

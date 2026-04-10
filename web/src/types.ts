@@ -39,8 +39,13 @@ export type HealthcheckSummary = {
   ok: boolean | null
   status_code: number | null
   latency_ms: number | null
+  stream: boolean | null
   model: string | null
   error: string | null
+}
+
+export type HealthcheckConfigSummary = {
+  stream: boolean
 }
 
 export type ProviderSummary = {
@@ -83,6 +88,7 @@ export type DashboardResponse = {
   primary_provider: string | null
   reloaded_at: string
   retry_policy: RetryPolicySummary
+  healthcheck: HealthcheckConfigSummary
   providers: ProviderSummary[]
   recent_requests: RecentRequest[]
   stats: {
@@ -161,4 +167,8 @@ export type RetryPolicyFormState = {
   retryableStatusCodes: string
   sameProviderRetryCount: string
   retryIntervalMs: string
+}
+
+export type HealthcheckSettingsFormState = {
+  stream: boolean
 }

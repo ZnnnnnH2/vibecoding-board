@@ -68,6 +68,7 @@ Behavior notes / 行为说明:
 - successful saves hot-reload the running proxy / 保存成功后会热重载正在运行的代理
 - request history is memory only / 请求历史仅保存在内存中
 - existing API keys are never sent back to the browser / 现有 API Key 不会回传到浏览器
+- manual health checks can be configured to use standard or streaming mode globally / 手动健康检查支持全局切换为普通或流式模式
 
 ## Config / 配置
 
@@ -84,6 +85,8 @@ Important notes / 重要说明:
   `models: ["*"]` 表示该 Provider 可以接收任意模型名
 - wildcard providers should set `healthcheck_model`  
   通配模型 Provider 建议设置 `healthcheck_model`
+- `healthcheck.stream: true` makes manual admin health checks verify streaming startup before marking success  
+  `healthcheck.stream: true` 会让管理界面的手动健康检查在确认流式输出启动后才判定成功
 
 ## Frontend Development / 前端开发
 

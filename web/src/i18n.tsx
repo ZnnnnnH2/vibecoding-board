@@ -92,7 +92,7 @@ const enMessages = {
     trafficTitle: 'Traffic',
     trafficDescription: 'Inspect recent request routing outcomes, failover attempts, and timing data.',
     settingsTitle: 'Settings',
-    settingsDescription: 'Configure global retry behavior before the proxy fails over to another provider.',
+    settingsDescription: 'Configure global retry behavior and manual healthcheck mode.',
   },
   overview: {
     eyebrow: 'Overview',
@@ -335,7 +335,13 @@ const enMessages = {
   },
   settings: {
     eyebrow: 'Settings',
-    title: 'Retry policy',
+    title: 'Global settings',
+    healthcheckEyebrow: 'Healthcheck',
+    healthcheckTitle: 'Manual healthcheck mode',
+    healthcheckCopy: 'Choose whether provider health checks triggered from the admin UI use standard or streaming requests.',
+    healthcheckStream: 'Healthcheck transport',
+    healthcheckStreamEnabled: 'Use streaming requests for manual health checks',
+    healthcheckStreamHint: 'When enabled, the check sends `stream: true` and marks success after the first upstream chunk arrives.',
     policyEyebrow: 'Retry policy',
     policyTitle: 'Same-provider retry controls',
     policyCopy: 'Configure which upstream HTTP responses should trigger another request to the same provider before the proxy fails over.',
@@ -353,8 +359,10 @@ const enMessages = {
     noteCoolingAfterExhausted: 'Providers abandoned after retry exhaustion enter cooldown immediately.',
     noteStreamingBoundary: 'Streaming retries only apply before the first chunk is sent to the client.',
     noteClientWaits: 'Local clients wait until the proxy succeeds, fails over successfully, or returns a final failure.',
-    save: 'Save retry policy',
-    saving: 'Saving...',
+    saveRetryPolicy: 'Save retry policy',
+    savingRetryPolicy: 'Saving...',
+    saveHealthcheck: 'Save healthcheck mode',
+    savingHealthcheck: 'Saving...',
   },
 }
 
@@ -411,7 +419,7 @@ const zhMessages: AppMessages = {
     trafficTitle: '流量',
     trafficDescription: '查看近期请求的路由结果、故障转移尝试与时延数据。',
     settingsTitle: '设置',
-    settingsDescription: '配置代理在切换到下一个 Provider 之前的全局重试行为。',
+    settingsDescription: '配置全局重试行为和手动健康检查模式。',
   },
   overview: {
     eyebrow: '总览',
@@ -651,7 +659,13 @@ const zhMessages: AppMessages = {
   },
   settings: {
     eyebrow: '设置',
-    title: '重试策略',
+    title: '全局设置',
+    healthcheckEyebrow: '健康检查',
+    healthcheckTitle: '手动健康检查模式',
+    healthcheckCopy: '选择管理界面触发的 Provider 健康检查是使用普通请求还是流式请求。',
+    healthcheckStream: '健康检查传输方式',
+    healthcheckStreamEnabled: '手动健康检查使用流式请求',
+    healthcheckStreamHint: '启用后，检查会发送 `stream: true`，并在收到上游首个 chunk 后判定成功。',
     policyEyebrow: '重试策略',
     policyTitle: '同 Provider 重试控制',
     policyCopy: '配置哪些上游 HTTP 响应会在代理切换 Provider 之前，先对当前 Provider 再发一次请求。',
@@ -669,8 +683,10 @@ const zhMessages: AppMessages = {
     noteCoolingAfterExhausted: '被放弃的 Provider 会在重试耗尽后立即进入冷却。',
     noteStreamingBoundary: '流式请求只会在首个 chunk 返回前应用这套重试逻辑。',
     noteClientWaits: '本地客户端会一直等待，直到代理成功、成功切换 Provider，或返回最终失败。',
-    save: '保存重试策略',
-    saving: '保存中...',
+    saveRetryPolicy: '保存重试策略',
+    savingRetryPolicy: '保存中...',
+    saveHealthcheck: '保存健康检查模式',
+    savingHealthcheck: '保存中...',
   },
 }
 

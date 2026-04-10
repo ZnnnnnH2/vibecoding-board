@@ -5,7 +5,14 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 
-from vibecoding_board.config import PRIORITY_STEP, ConfigError, ProviderConfig, ProxyConfig, RetryPolicyConfig
+from vibecoding_board.config import (
+    PRIORITY_STEP,
+    ConfigError,
+    HealthcheckConfig,
+    ProviderConfig,
+    ProxyConfig,
+    RetryPolicyConfig,
+)
 from vibecoding_board.config_store import ConfigStore
 from vibecoding_board.registry import ProviderRegistry, ProviderSnapshot, utc_now
 
@@ -31,6 +38,7 @@ class HealthcheckSnapshot:
     ok: bool | None
     status_code: int | None
     latency_ms: int | None
+    stream: bool | None
     model: str | None
     error: str | None
 
@@ -68,6 +76,7 @@ class RuntimeManager:
             "primary_provider": runtime.config.primary_provider_name(),
             "reloaded_at": runtime.reloaded_at,
             "retry_policy": runtime.config.retry_policy.model_dump(mode="python"),
+            "healthcheck": runtime.config.healthcheck.model_dump(mode="python"),
             "providers": [
                 self._provider_to_public_dict(provider, healthchecks[provider.name])
                 for provider in providers
@@ -81,6 +90,7 @@ class RuntimeManager:
         ok: bool,
         status_code: int | None,
         latency_ms: int | None,
+        stream: bool,
         model: str | None,
         error: str | None,
     ) -> None:
@@ -91,6 +101,7 @@ class RuntimeManager:
                 ok=ok,
                 status_code=status_code,
                 latency_ms=latency_ms,
+                stream=stream,
                 model=model,
                 error=error,
             )
@@ -103,6 +114,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -131,6 +143,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -148,6 +161,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -162,6 +176,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -177,6 +192,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -192,6 +208,7 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
             return await self._persist_and_activate(updated)
@@ -202,6 +219,18 @@ class RuntimeManager:
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=retry_policy,
+                healthcheck=config.healthcheck.model_copy(deep=True),
+                providers=[provider.model_copy(deep=True) for provider in config.providers],
+            )
+            return await self._persist_and_activate(updated)
+
+    async def update_healthcheck(self, healthcheck: HealthcheckConfig) -> RuntimeSnapshot:
+        async with self._mutation_lock:
+            config = self.current().config.model_copy(deep=True)
+            updated = ProxyConfig(
+                listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=healthcheck,
                 providers=[provider.model_copy(deep=True) for provider in config.providers],
             )
             return await self._persist_and_activate(updated)
@@ -244,6 +273,7 @@ class RuntimeManager:
                         ok=None,
                         status_code=None,
                         latency_ms=None,
+                        stream=None,
                         model=None,
                         error=None,
                     ),
@@ -278,6 +308,7 @@ class RuntimeManager:
                 "ok": healthcheck.ok,
                 "status_code": healthcheck.status_code,
                 "latency_ms": healthcheck.latency_ms,
+                "stream": healthcheck.stream,
                 "model": healthcheck.model,
                 "error": healthcheck.error,
             },

@@ -57,6 +57,16 @@ export function ResultDialog({
             <strong>{healthcheck.model ?? messages.app.noModel}</strong>
           </div>
           <div className="result-field">
+            <span className="surface-label">{messages.traffic.mode}</span>
+            <strong>
+              {healthcheck.stream == null
+                ? messages.app.notAvailable
+                : healthcheck.stream
+                  ? messages.traffic.streaming
+                  : messages.traffic.standard}
+            </strong>
+          </div>
+          <div className="result-field">
             <span className="surface-label">{messages.notifications.statusCode}</span>
             <strong>{healthcheck.status_code ?? messages.app.notAvailable}</strong>
           </div>
