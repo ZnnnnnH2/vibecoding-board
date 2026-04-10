@@ -1,5 +1,5 @@
 {
-  "last_flushed_at": "2026-04-10T10:18:11.568764+08:00",
+  "last_flushed_at": "2026-04-10T14:43:58.095788+08:00",
   "retention_hours": 720,
   "buckets": [
     {
@@ -646,19 +646,77 @@
     },
     {
       "bucket_start": "2026-04-10T10:00:00+08:00",
-      "requests": 27,
-      "success_count": 26,
-      "interrupted_count": 1,
+      "requests": 57,
+      "success_count": 54,
+      "interrupted_count": 3,
       "error_count": 0,
-      "total_tokens": 1143569,
-      "duration_sum_ms": 1183080,
-      "duration_count": 27,
-      "ttfb_sum_ms": 67286,
-      "ttfb_count": 27,
+      "total_tokens": 1671466,
+      "duration_sum_ms": 2210331,
+      "duration_count": 57,
+      "ttfb_sum_ms": 134798,
+      "ttfb_count": 57,
       "providers": {
         "relay_asxs": {
-          "requests": 27,
-          "total_tokens": 1143569
+          "requests": 57,
+          "total_tokens": 1671466
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-10T11:00:00+08:00",
+      "requests": 47,
+      "success_count": 42,
+      "interrupted_count": 5,
+      "error_count": 0,
+      "total_tokens": 1150810,
+      "duration_sum_ms": 2324156,
+      "duration_count": 47,
+      "ttfb_sum_ms": 250362,
+      "ttfb_count": 47,
+      "providers": {
+        "relay_asxs": {
+          "requests": 47,
+          "total_tokens": 1150810
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-10T12:00:00+08:00",
+      "requests": 45,
+      "success_count": 39,
+      "interrupted_count": 5,
+      "error_count": 1,
+      "total_tokens": 1834040,
+      "duration_sum_ms": 2032004,
+      "duration_count": 45,
+      "ttfb_sum_ms": 178036,
+      "ttfb_count": 45,
+      "providers": {
+        "relay_998": {
+          "requests": 1,
+          "total_tokens": 0
+        },
+        "relay_asxs": {
+          "requests": 44,
+          "total_tokens": 1834040
+        }
+      }
+    },
+    {
+      "bucket_start": "2026-04-10T14:00:00+08:00",
+      "requests": 52,
+      "success_count": 51,
+      "interrupted_count": 1,
+      "error_count": 0,
+      "total_tokens": 2826607,
+      "duration_sum_ms": 3003804,
+      "duration_count": 52,
+      "ttfb_sum_ms": 117593,
+      "ttfb_count": 52,
+      "providers": {
+        "relay_asxs": {
+          "requests": 52,
+          "total_tokens": 2826607
         }
       }
     }

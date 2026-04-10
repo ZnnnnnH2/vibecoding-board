@@ -1,34 +1,44 @@
-# OpenAI-Compatible Local Aggregation Proxy / OpenAI 兼容本地聚合代理
+# vibecoding-board
 
-This project runs a local `FastAPI` proxy in front of multiple OpenAI-compatible upstream relays.  
-本项目在多个 OpenAI 兼容上游前面运行一个本地 `FastAPI` 代理。
+Local OpenAI-compatible aggregation proxy with failover, model-aware routing, and a built-in admin UI.
 
-Your client points at one local endpoint, and the proxy selects an upstream based on model support, priority, and temporary health state.  
-你的客户端只需要指向一个本地入口，代理会根据模型支持、优先级和临时健康状态选择合适的上游。
+[中文说明](README.zh-CN.md)
 
-The admin UI now supports both English and Chinese. It follows browser language by default and also supports manual switching in the top bar.  
-管理界面现在同时支持英文和中文。默认会跟随浏览器语言，也可以在顶部栏手动切换。
+`vibecoding-board` is for the moment when one relay is no longer enough. Keep every client pointed at one local `/v1` endpoint, then manage multiple upstream providers behind it without changing SDK settings every time.
 
-## Features / 功能
+```mermaid
+flowchart LR
+    Client["Your apps / SDKs"] --> Proxy["vibecoding-board<br/>http://127.0.0.1:9000/v1"]
+    Proxy --> A["relay_a"]
+    Proxy --> B["relay_b"]
+    Proxy --> C["more providers"]
+    Proxy --> Admin["/admin"]
+```
 
-- `POST /v1/chat/completions`
-- `POST /v1/responses`
-- `GET /v1/models`
-- `GET /healthz`
-- Streaming failover before the first chunk / 首包前的流式故障转移
-- Non-streaming failover on timeout, connection errors, `429`, and `5xx`
-- Priority-based routing with a simple circuit breaker / 基于优先级的路由与简单熔断
-- Built-in admin UI at `/admin` / 内置 `/admin` 管理界面
-- Persistent provider management with config writes and hot reload / Provider 配置写回与热重载
-- In-memory recent request history and usage stats / 内存中的近期请求记录与用量统计
-- Hourly metrics persisted to `./data/metrics/admin_hourly.json` for charts / 图表小时级指标会持久化到 `./data/metrics/admin_hourly.json`
+## Why People Use It
 
-## Quick Start / 快速开始
+- One local OpenAI-compatible endpoint instead of manually switching base URLs across tools and SDKs.
+- Routing by model support and provider priority, so explicit providers and wildcard fallbacks can live in one place.
+- Automatic failover for retryable upstream problems, including streaming failover before the first chunk arrives.
+- A built-in admin console for provider management, health checks, routing tweaks, and traffic inspection.
+- Local-first operations: configuration stays in `config.yaml`, recent traffic stays in memory, and hourly metrics are written to disk.
 
-1. Install dependencies. / 安装依赖。  
-2. Copy `config.example.yaml` to `config.yaml`. / 复制 `config.example.yaml` 为 `config.yaml`。  
-3. Replace upstream URLs and configure your keys. / 替换上游地址并配置密钥。  
-4. Start the proxy. / 启动代理。  
+## Quick Start
+
+Requirements: Python 3.12+ and [`uv`](https://docs.astral.sh/uv/).
+
+1. Clone the repository and install dependencies.
+2. Copy `config.example.yaml` to `config.yaml`.
+3. Point each provider at an OpenAI-compatible upstream and set its API key.
+4. Start the proxy and open the admin UI.
+
+```bash
+uv sync --extra dev
+cp config.example.yaml config.yaml
+export RELAY_A_API_KEY="your-key-a"
+export RELAY_B_API_KEY="your-key-b"
+uv run vibecoding-board --config config.yaml
+```
 
 ```powershell
 uv sync --extra dev
@@ -38,97 +48,148 @@ $env:RELAY_B_API_KEY="your-key-b"
 uv run vibecoding-board --config config.yaml
 ```
 
-Default listen address / 默认监听地址:
+Once it is running:
 
-- `http://127.0.0.1:9000`
+- Proxy base URL: `http://127.0.0.1:9000/v1`
+- Admin UI: `http://127.0.0.1:9000/admin/`
+- Health check: `http://127.0.0.1:9000/healthz`
 
-Proxy endpoint / 代理入口:
+If your SDK insists on an API key for the local endpoint, any non-empty placeholder string is fine. The proxy injects the real upstream provider keys server-side.
 
-- `http://127.0.0.1:9000/v1`
+## Try It
 
-Admin UI / 管理界面:
-
-- `http://127.0.0.1:9000/admin/`
-
-## Admin UI / 管理界面
-
-The admin UI supports:  
-管理界面支持：
-
-- overview, provider management, and traffic inspection / 总览、Provider 管理与流量查看
-- adding, editing, deleting, enabling, and disabling providers / 新增、编辑、删除、启用与停用 Provider
-- hot-updating provider priority / 热更新 Provider 优先级
-- promoting a provider to global primary / 一键提升为主路由
-- per-provider manual health checks / 单个 Provider 的手动健康检查
-- English and Chinese UI switching / 中英文界面切换
-
-Behavior notes / 行为说明:
-
-- management changes write back to `config.yaml` / 管理操作会写回 `config.yaml`
-- successful saves hot-reload the running proxy / 保存成功后会热重载正在运行的代理
-- request history is memory only / 请求历史仅保存在内存中
-- existing API keys are never sent back to the browser / 现有 API Key 不会回传到浏览器
-- manual health checks can be configured to use standard or streaming mode globally / 手动健康检查支持全局切换为普通或流式模式
-
-## Config / 配置
-
-See [config.example.yaml](/D:/Codes/vibecoding-board/config.example.yaml).  
-配置示例见 [config.example.yaml](/D:/Codes/vibecoding-board/config.example.yaml)。
-
-Important notes / 重要说明:
-
-- `base_url` should point at the upstream API root, usually ending in `/v1`  
-  `base_url` 应指向上游 API 根路径，通常以 `/v1` 结尾
-- lower `priority` values are tried first  
-  `priority` 数字越小，越先参与路由
-- `models: ["*"]` allows routing any model to that provider  
-  `models: ["*"]` 表示该 Provider 可以接收任意模型名
-- wildcard providers should set `healthcheck_model`  
-  通配模型 Provider 建议设置 `healthcheck_model`
-- `healthcheck.stream: true` makes manual admin health checks verify streaming startup before marking success  
-  `healthcheck.stream: true` 会让管理界面的手动健康检查在确认流式输出启动后才判定成功
-
-## Frontend Development / 前端开发
-
-The built admin app is served from `vibecoding_board/static/admin`.  
-构建后的管理前端会由 `vibecoding_board/static/admin` 提供。
-
-If you want to iterate on frontend source:  
-如果你要开发前端源码：
-
-```powershell
-cd web
-npm install --cache .npm-cache
-npm run dev
+```bash
+curl http://127.0.0.1:9000/healthz
+curl http://127.0.0.1:9000/v1/models
+curl http://127.0.0.1:9000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1",
+    "messages": [{"role": "user", "content": "hello"}]
+  }'
 ```
 
-Build the production admin bundle:  
-构建生产静态资源：
+## What You Get
 
-```powershell
-cd web
-npm run build
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `GET /v1/models`
+- `GET /healthz`
+- Model-aware routing across multiple providers
+- Retryable-status failover on `429` and configured `5xx` responses
+- Optional same-provider retries before moving to the next provider
+- Simple cooldown-based circuit breaker for repeated retryable failures
+- Built-in admin UI at `/admin`
+- Recent request inspection with attempt-by-attempt fallback traces
+- Hourly charts and aggregated metrics persisted to `./data/metrics/admin_hourly.json`
+- English and Chinese UI, plus light/dark theme preference
+
+## How Routing And Failover Work
+
+- Providers are filtered by model support first, then ordered by priority. Lower `priority` values are tried first.
+- `models: ["*"]` can act as a catch-all fallback for anything not handled by an explicit provider.
+- Non-streaming requests can retry the same provider first, then fail over to the next provider if the retry budget is exhausted.
+- Streaming requests can fail over only before the first chunk is returned to the client. After the stream starts, an interruption is logged and surfaced instead of replaying the request elsewhere.
+- Providers that keep failing with retryable errors enter cooldown for `cooldown_seconds`, then become eligible again automatically.
+
+## Admin UI
+
+The admin console is built for day-two operations, not just demos.
+
+- Overview page with proxy endpoint, primary provider, and high-level metrics
+- Provider management for add, edit, delete, enable, disable, reprioritize, and promote-to-primary flows
+- Manual health checks per provider, using either standard or streaming validation
+- Traffic view with request state, duration, TTFB, usage fields, and fallback attempt history
+- Settings page for retry policy and global manual health-check mode
+- Language switching between English and Chinese
+- Saved API keys are never echoed back from the backend to the browser
+
+Management changes are written back to `config.yaml` and hot-reloaded into the running proxy.
+
+## Configuration Example
+
+See [config.example.yaml](config.example.yaml) for the full example.
+
+```yaml
+listen:
+  host: 127.0.0.1
+  port: 9000
+
+retry_policy:
+  retryable_status_codes: [429, 500, 502, 503, 504]
+  same_provider_retry_count: 0
+  retry_interval_ms: 0
+
+healthcheck:
+  stream: false
+
+providers:
+  - name: relay_a
+    base_url: https://relay-a.example.com/v1
+    api_key: env:RELAY_A_API_KEY
+    enabled: true
+    priority: 10
+    models: [gpt-4.1, gpt-4o-mini]
+    timeout_seconds: 60
+    max_failures: 3
+    cooldown_seconds: 30
+
+  - name: relay_b
+    base_url: https://relay-b.example.com/v1
+    api_key: env:RELAY_B_API_KEY
+    enabled: true
+    priority: 20
+    models: ["*"]
+    healthcheck_model: gpt-4o-mini
+    timeout_seconds: 60
+    max_failures: 3
+    cooldown_seconds: 30
 ```
 
-## Tests / 测试
+Important notes:
+
+- `base_url` should point at the upstream API root, usually ending in `/v1`.
+- `api_key: env:NAME` reads provider credentials from the environment instead of committing secrets into the repo.
+- Wildcard providers should set `healthcheck_model`, because manual health checks need a concrete model name.
+- Priorities are normalized on load and save to keep spacing consistent while preserving relative order.
+- `GET /v1/models` advertises the union of explicit models from enabled providers. Wildcard-only support is not expanded into a giant synthetic model list.
+
+## Operational Notes
+
+- Recent request history is in-memory only. It is useful for live inspection, not long-term audit storage.
+- Hourly metrics are persisted locally for charts and aggregated summaries.
+- The project is designed for local workflows and small-team internal gateways, not as a globally distributed edge proxy.
+- Existing provider secrets stay server-side; the admin UI can submit new secrets, but stored secrets are not returned in dashboard payloads.
+
+## Good Fits
+
+- Personal local gateway for coding tools, scripts, or desktop apps that should always talk to one stable `/v1` endpoint
+- Small-team relay router that needs quick failover and an admin console without introducing a database
+- Self-hosted experimentation setup where you want to compare providers, keep a backup relay ready, and inspect what happened when a request failed
+
+## Development
 
 Backend:
 
-```powershell
-$env:UV_CACHE_DIR="D:\Codes\vibecoding-board\.uv-cache"
+```bash
+uv run vibecoding-board --config config.yaml
 uv run pytest
 ```
 
 Frontend:
 
-```powershell
+```bash
 cd web
+npm install --cache .npm-cache
+npm run dev
 npm run lint
 npm run build
 ```
 
-## Design Docs / 设计文档
+The built admin assets are served from `vibecoding_board/static/admin`. Edit the source in `web/src/`, then rebuild instead of editing bundled files by hand.
 
-- [2026-04-07-openai-aggregator-proxy-design.md](/D:/Codes/vibecoding-board/docs/superpowers/specs/2026-04-07-openai-aggregator-proxy-design.md)
-- [2026-04-07-provider-management-hot-update-design.md](/D:/Codes/vibecoding-board/docs/superpowers/specs/2026-04-07-provider-management-hot-update-design.md)
-- [2026-04-08-admin-shell-refactor-design.md](/D:/Codes/vibecoding-board/docs/superpowers/specs/2026-04-08-admin-shell-refactor-design.md)
+## Project Notes
+
+- Example config: [config.example.yaml](config.example.yaml)
+- Admin frontend source: [web/src](web/src)
+- Design specs: [docs/superpowers/specs](docs/superpowers/specs)
