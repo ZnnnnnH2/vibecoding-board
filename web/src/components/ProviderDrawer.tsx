@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Network, Route, ShieldAlert, X, Save, Activity } from 'lucide-react'
 
 import { useI18n } from '../i18n'
 import type { ProviderFormState } from '../types'
@@ -41,16 +42,18 @@ export function ProviderDrawer({
   return (
     <AnimatePresence>
       {open && (
-        <motion.div 
-          className="drawer-backdrop" 
+        <motion.div
+          className="drawer-backdrop"
           role="presentation"
+          onClick={() => { if (!busy) onClose() }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
         >
-          <motion.aside 
+          <motion.aside
             className="drawer-panel"
+            onClick={(e) => e.stopPropagation()}
             initial={{ x: '100%', opacity: 0.5 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
@@ -61,193 +64,224 @@ export function ProviderDrawer({
                 <span className="eyebrow">{mode === 'create' ? messages.drawer.newUpstream : messages.drawer.editUpstream}</span>
                 <h2>{mode === 'create' ? messages.drawer.addProvider : messages.drawer.refineProviderDetails}</h2>
               </div>
-              <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-                {messages.drawer.close}
+              <button type="button" className="ghost-button" onClick={onClose} disabled={busy} style={{ width: '42px', height: '42px', padding: 0 }}>
+                <X size={20} />
               </button>
             </div>
 
             <form className="drawer-form" onSubmit={handleSubmit}>
-          <section className="drawer-section">
-            <div className="drawer-section-header">
-              <div>
-                <span className="eyebrow">{messages.drawer.identityEyebrow}</span>
-                <h3>{messages.drawer.connectionDetails}</h3>
+              <section className="drawer-section">
+                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
+                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <Network size={20} style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div>
+                    <span className="eyebrow">{messages.drawer.identityEyebrow}</span>
+                    <h3>{messages.drawer.connectionDetails}</h3>
+                    <p className="drawer-section-copy">{messages.drawer.identityCopy}</p>
+                  </div>
+                </div>
+
+                <div className="drawer-field-grid">
+                  <label>
+                    <span>{messages.drawer.name}</span>
+                    <input
+                      value={form.name}
+                      onChange={(event) => update('name', event.target.value)}
+                      placeholder={messages.drawer.namePlaceholder}
+                      required
+                    />
+                    <small className="field-hint">{messages.drawer.nameHint}</small>
+                  </label>
+
+                  <label>
+                    <span>{messages.drawer.baseUrl}</span>
+                    <input
+                      value={form.baseUrl}
+                      onChange={(event) => update('baseUrl', event.target.value)}
+                      placeholder={messages.drawer.baseUrlPlaceholder}
+                      required
+                    />
+                    <small className="field-hint">{messages.drawer.baseUrlHint}</small>
+                  </label>
+
+                  <label className="drawer-field-span">
+                    <span>{messages.drawer.apiKey}</span>
+                    <input
+                      type="password"
+                      value={form.apiKey}
+                      onChange={(event) => update('apiKey', event.target.value)}
+                      placeholder={mode === 'edit' ? messages.drawer.apiKeyEditPlaceholder : messages.drawer.apiKeyCreatePlaceholder}
+                      required={mode === 'create'}
+                    />
+                    <small className="field-hint">{messages.drawer.apiKeyHint}</small>
+                  </label>
+                </div>
+
+                <label className="toggle-switch-wrapper">
+                  <div className="toggle-switch-info">
+                    <strong>{messages.drawer.enableAfterSave}</strong>
+                  </div>
+                  <div className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.enabled}
+                      onChange={(event) => update('enabled', event.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </div>
+                </label>
+              </section>
+
+              <section className="drawer-section">
+                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
+                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <Route size={20} style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div>
+                    <span className="eyebrow">{messages.drawer.routingEyebrow}</span>
+                    <h3>{messages.drawer.selectionRules}</h3>
+                    <p className="drawer-section-copy">{messages.drawer.routingCopy}</p>
+                  </div>
+                </div>
+
+                <div className="drawer-field-grid">
+                  <label>
+                    <span>{messages.drawer.priority}</span>
+                    <input
+                      type="number"
+                      step="1"
+                      value={form.priority}
+                      onChange={(event) => update('priority', event.target.value)}
+                      required
+                    />
+                    <small className="field-hint">{messages.drawer.priorityHint}</small>
+                  </label>
+
+                  <label>
+                    <span>{messages.drawer.healthcheckModel}</span>
+                    <input
+                      value={form.healthcheckModel}
+                      onChange={(event) => update('healthcheckModel', event.target.value)}
+                      placeholder={form.modelMode === 'all' ? messages.drawer.wildcardPlaceholder : messages.drawer.healthcheckPlaceholder}
+                    />
+                    <small className="field-hint">{messages.drawer.healthcheckHint}</small>
+                  </label>
+                </div>
+
+                <div className="segment-control">
+                  <button
+                    type="button"
+                    className={form.modelMode === 'all' ? 'segment-active' : ''}
+                    onClick={() => update('modelMode', 'all')}
+                  >
+                    {messages.drawer.allModels}
+                  </button>
+                  <button
+                    type="button"
+                    className={form.modelMode === 'explicit' ? 'segment-active' : ''}
+                    onClick={() => update('modelMode', 'explicit')}
+                  >
+                    {messages.drawer.explicitList}
+                  </button>
+                </div>
+
+                {form.modelMode === 'explicit' ? (
+                  <label>
+                    <span>{messages.drawer.models}</span>
+                    <textarea
+                      rows={6}
+                      value={form.modelText}
+                      onChange={(event) => update('modelText', event.target.value)}
+                      placeholder={messages.drawer.modelsPlaceholder}
+                      required
+                    />
+                    <small className="field-hint">{messages.drawer.modelsHint}</small>
+                  </label>
+                ) : (
+                  <div className="form-hint-panel">
+                    <span className="meta-label">{messages.drawer.wildcardRouting}</span>
+                    <p>{messages.drawer.wildcardRoutingCopy}</p>
+                  </div>
+                )}
+              </section>
+
+              <section className="drawer-section">
+                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
+                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <ShieldAlert size={20} style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <div>
+                    <span className="eyebrow">{messages.drawer.reliabilityEyebrow}</span>
+                    <h3>{messages.drawer.timeoutAndFailover}</h3>
+                    <p className="drawer-section-copy">{messages.drawer.reliabilityCopy}</p>
+                  </div>
+                </div>
+
+                <div className="drawer-field-grid">
+                  <label>
+                    <span>{messages.drawer.timeout}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={form.timeoutSeconds}
+                      onChange={(event) => update('timeoutSeconds', event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    <span>{messages.drawer.maxFailures}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={form.maxFailures}
+                      onChange={(event) => update('maxFailures', event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    <span>{messages.drawer.cooldown}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={form.cooldownSeconds}
+                      onChange={(event) => update('cooldownSeconds', event.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <label className="toggle-switch-wrapper">
+                  <div className="toggle-switch-info">
+                    <strong>{messages.drawer.alwaysAlive}</strong>
+                    <span>{messages.drawer.alwaysAliveHint}</span>
+                  </div>
+                  <div className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.alwaysAlive}
+                      onChange={(event) => update('alwaysAlive', event.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </div>
+                </label>
+              </section>
+
+              <div className="drawer-footer">
+                <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
+                  {messages.drawer.cancel}
+                </button>
+                <button type="submit" className="accent-button" disabled={busy}>
+                  {busy ? <Activity size={18} className="spin-icon" /> : <Save size={18} />}
+                  {busy ? messages.drawer.saving : submitLabel}
+                </button>
               </div>
-              <p className="drawer-section-copy">{messages.drawer.identityCopy}</p>
-            </div>
-
-            <div className="drawer-field-grid">
-              <label>
-                <span>{messages.drawer.name}</span>
-                <input
-                  value={form.name}
-                  onChange={(event) => update('name', event.target.value)}
-                  placeholder={messages.drawer.namePlaceholder}
-                  required
-                />
-                <small className="field-hint">{messages.drawer.nameHint}</small>
-              </label>
-
-              <label>
-                <span>{messages.drawer.baseUrl}</span>
-                <input
-                  value={form.baseUrl}
-                  onChange={(event) => update('baseUrl', event.target.value)}
-                  placeholder={messages.drawer.baseUrlPlaceholder}
-                  required
-                />
-                <small className="field-hint">{messages.drawer.baseUrlHint}</small>
-              </label>
-
-              <label className="drawer-field-span">
-                <span>{messages.drawer.apiKey}</span>
-                <input
-                  value={form.apiKey}
-                  onChange={(event) => update('apiKey', event.target.value)}
-                  placeholder={mode === 'edit' ? messages.drawer.apiKeyEditPlaceholder : messages.drawer.apiKeyCreatePlaceholder}
-                  required={mode === 'create'}
-                />
-                <small className="field-hint">{messages.drawer.apiKeyHint}</small>
-              </label>
-            </div>
-
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(event) => update('enabled', event.target.checked)}
-              />
-              <span>{messages.drawer.enableAfterSave}</span>
-            </label>
-          </section>
-
-          <section className="drawer-section">
-            <div className="drawer-section-header">
-              <div>
-                <span className="eyebrow">{messages.drawer.routingEyebrow}</span>
-                <h3>{messages.drawer.selectionRules}</h3>
-              </div>
-              <p className="drawer-section-copy">{messages.drawer.routingCopy}</p>
-            </div>
-
-            <div className="drawer-field-grid">
-              <label>
-                <span>{messages.drawer.priority}</span>
-                <input
-                  type="number"
-                  step="1"
-                  value={form.priority}
-                  onChange={(event) => update('priority', event.target.value)}
-                  required
-                />
-                <small className="field-hint">{messages.drawer.priorityHint}</small>
-              </label>
-
-              <label>
-                <span>{messages.drawer.healthcheckModel}</span>
-                <input
-                  value={form.healthcheckModel}
-                  onChange={(event) => update('healthcheckModel', event.target.value)}
-                  placeholder={form.modelMode === 'all' ? messages.drawer.wildcardPlaceholder : messages.drawer.healthcheckPlaceholder}
-                />
-                <small className="field-hint">{messages.drawer.healthcheckHint}</small>
-              </label>
-            </div>
-
-            <div className="segment-control">
-              <button
-                type="button"
-                className={form.modelMode === 'all' ? 'segment-active' : ''}
-                onClick={() => update('modelMode', 'all')}
-              >
-                {messages.drawer.allModels}
-              </button>
-              <button
-                type="button"
-                className={form.modelMode === 'explicit' ? 'segment-active' : ''}
-                onClick={() => update('modelMode', 'explicit')}
-              >
-                {messages.drawer.explicitList}
-              </button>
-            </div>
-
-            {form.modelMode === 'explicit' ? (
-              <label>
-                <span>{messages.drawer.models}</span>
-                <textarea
-                  rows={6}
-                  value={form.modelText}
-                  onChange={(event) => update('modelText', event.target.value)}
-                  placeholder={messages.drawer.modelsPlaceholder}
-                  required
-                />
-                <small className="field-hint">{messages.drawer.modelsHint}</small>
-              </label>
-            ) : (
-              <div className="form-hint-panel">
-                <span className="meta-label">{messages.drawer.wildcardRouting}</span>
-                <p>{messages.drawer.wildcardRoutingCopy}</p>
-              </div>
-            )}
-          </section>
-
-          <section className="drawer-section">
-            <div className="drawer-section-header">
-              <div>
-                <span className="eyebrow">{messages.drawer.reliabilityEyebrow}</span>
-                <h3>{messages.drawer.timeoutAndFailover}</h3>
-              </div>
-              <p className="drawer-section-copy">{messages.drawer.reliabilityCopy}</p>
-            </div>
-
-            <div className="drawer-field-grid">
-              <label>
-                <span>{messages.drawer.timeout}</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={form.timeoutSeconds}
-                  onChange={(event) => update('timeoutSeconds', event.target.value)}
-                  required
-                />
-              </label>
-
-              <label>
-                <span>{messages.drawer.maxFailures}</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={form.maxFailures}
-                  onChange={(event) => update('maxFailures', event.target.value)}
-                  required
-                />
-              </label>
-
-              <label>
-                <span>{messages.drawer.cooldown}</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={form.cooldownSeconds}
-                  onChange={(event) => update('cooldownSeconds', event.target.value)}
-                  required
-                />
-              </label>
-            </div>
-          </section>
-
-          <div className="drawer-footer">
-            <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-              {messages.drawer.cancel}
-            </button>
-            <button type="submit" className="accent-button" disabled={busy}>
-              {busy ? messages.drawer.saving : submitLabel}
-            </button>
-          </div>
-        </form>
+            </form>
           </motion.aside>
         </motion.div>
       )}

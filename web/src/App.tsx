@@ -68,6 +68,7 @@ const emptyForm: ProviderFormState = {
   baseUrl: '',
   apiKey: '',
   enabled: true,
+  alwaysAlive: false,
   priority: '10',
   modelMode: 'explicit',
   modelText: '',
@@ -94,6 +95,7 @@ function formFromProvider(provider: ProviderSummary): ProviderFormState {
     baseUrl: provider.base_url,
     apiKey: '',
     enabled: provider.enabled,
+    alwaysAlive: provider.always_alive,
     priority: String(provider.priority),
     modelMode: provider.supports_all_models ? 'all' : 'explicit',
     modelText: provider.supports_all_models ? '' : provider.models.join('\n'),
@@ -154,6 +156,10 @@ export default function App() {
   const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
   const activeRequestControllerRef = useRef<AbortController | null>(null)
   const toastIdRef = useRef(0)
+  const toastTimerIds = useRef(new Set<number>())
+  const metricsWindowRef = useRef(metricsWindow)
+  metricsWindowRef.current = metricsWindow
+  const initialLoadDone = useRef(false)
   const theme = resolveTheme(themePreference, systemTheme)
   const locale = resolveLocale(localePreference)
   const messages = messagesByLocale[locale]
@@ -228,7 +234,7 @@ export default function App() {
     try {
       const [dashboardResult, metricsResult] = await Promise.allSettled([
         api.dashboard(controller.signal),
-        api.metrics(metricsWindow, controller.signal),
+        api.metrics(metricsWindowRef.current, controller.signal),
       ])
 
       if (dashboardResult.status === 'fulfilled') {
@@ -262,11 +268,25 @@ export default function App() {
         setLoading(false)
       }
     }
-  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, metricsWindow, pushToast])
+    initialLoadDone.current = true
+  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, pushToast])
 
   useEffect(() => {
     void loadAdminData()
   }, [loadAdminData])
+
+  useEffect(() => {
+    if (!initialLoadDone.current) return
+    const controller = new AbortController()
+    api.metrics(metricsWindow, controller.signal)
+      .then((result) => startTransition(() => setMetrics(result)))
+      .catch((error) => {
+        if (!(error instanceof Error && error.name === 'AbortError')) {
+          pushToast('error', error instanceof Error ? error.message : messages.app.metricsLoadFailed)
+        }
+      })
+    return () => controller.abort()
+  }, [metricsWindow, pushToast, messages.app.metricsLoadFailed])
 
   useEffect(() => {
     return () => {
@@ -276,18 +296,13 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (toasts.length === 0) {
-      return undefined
-    }
-
-    const timers = toasts.map((toast) =>
+    for (const toast of toasts) {
+      if (toastTimerIds.current.has(toast.id)) continue
+      toastTimerIds.current.add(toast.id)
       window.setTimeout(() => {
+        toastTimerIds.current.delete(toast.id)
         setToasts((current) => current.filter((item) => item.id !== toast.id))
-      }, 3500),
-    )
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer))
+      }, 3500)
     }
   }, [toasts])
 
@@ -387,6 +402,10 @@ export default function App() {
 
   async function handleToggle(provider: ProviderSummary) {
     await runMutation(`toggle:${provider.name}`, () => api.toggleProvider(provider.name))
+  }
+
+  async function handleToggleAlwaysAlive(provider: ProviderSummary) {
+    await runMutation(`always-alive:${provider.name}`, () => api.toggleProviderAlwaysAlive(provider.name))
   }
 
   async function handleHealthcheck(provider: ProviderSummary) {
@@ -499,7 +518,7 @@ export default function App() {
           </div>
           <div className="sidebar-status-card">
             <span className="surface-label">{messages.app.sidebarLastReload}</span>
-            <strong>{dashboard ? formatTimestamp(dashboard.reloaded_at) : messages.app.loading}</strong>
+            <strong>{dashboard ? formatTimestamp(dashboard.reloaded_at, locale) : messages.app.loading}</strong>
           </div>
           <div className="sidebar-status-card">
             <span className="surface-label">{messages.app.sidebarSyncState}</span>
@@ -614,6 +633,7 @@ export default function App() {
               onHealthcheck={handleHealthcheck}
               onPromote={handlePromote}
               onToggle={handleToggle}
+              onToggleAlwaysAlive={handleToggleAlwaysAlive}
               onDelete={(provider) => setDialog({ kind: 'confirm-delete', provider })}
               onPrioritySave={handlePrioritySave}
             />

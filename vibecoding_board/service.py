@@ -36,6 +36,15 @@ HOP_BY_HOP_HEADERS = {
     "content-length",
 }
 
+# Headers that describe the *encoding* of the body as received from upstream.
+# httpx transparently decodes compressed responses when we access ``.content``
+# or ``.aread()``, so forwarding the original ``content-encoding`` would tell
+# the client to decompress bytes that are already plain. These must only be
+# dropped on code paths that hand the decoded body back to the client.
+CONTENT_ENCODING_HEADERS = {
+    "content-encoding",
+}
+
 RETRYABLE_EXCEPTIONS = (
     httpx.ConnectError,
     httpx.ConnectTimeout,
@@ -90,11 +99,16 @@ def build_error_response(
     return JSONResponse(status_code=status_code, content=payload)
 
 
-def normalize_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
+def normalize_response_headers(
+    headers: Mapping[str, str],
+    *,
+    drop_content_encoding: bool = False,
+) -> dict[str, str]:
+    excluded = HOP_BY_HOP_HEADERS | CONTENT_ENCODING_HEADERS if drop_content_encoding else HOP_BY_HOP_HEADERS
     return {
         key: value
         for key, value in headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS
+        if key.lower() not in excluded
     }
 
 
@@ -405,7 +419,9 @@ class ProxyService:
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
-                    headers=normalize_response_headers(response.headers),
+                    headers=normalize_response_headers(
+                        response.headers, drop_content_encoding=True
+                    ),
                 )
 
             if provider_exhausted:
@@ -523,7 +539,9 @@ class ProxyService:
                     return Response(
                         content=body_bytes,
                         status_code=response.status_code,
-                        headers=normalize_response_headers(response.headers),
+                        headers=normalize_response_headers(
+                            response.headers, drop_content_encoding=True
+                        ),
                     )
 
                 stream_iterator = response.aiter_raw()
@@ -607,6 +625,12 @@ class ProxyService:
         error_message: str | None = None
         usage: UsageLogEntry | None = None
         parser = StreamUsageParser()
+        # aiter_raw() hands back the raw (possibly gzipped/deflated/br) bytes
+        # as received from upstream. Parsing usage out of compressed bytes is
+        # meaningless, and forwarding stays byte-exact regardless.
+        upstream_encoding = response.headers.get("content-encoding", "").strip().lower()
+        if upstream_encoding and upstream_encoding != "identity":
+            parser.disable()
         try:
             if first_chunk:
                 parser.feed(first_chunk)
@@ -627,7 +651,18 @@ class ProxyService:
                 extra={"provider": provider.name, "error": type(exc).__name__},
             )
         finally:
-            await response.aclose()
+            # Close the upstream response as soon as the client-facing
+            # generator is done — this is what releases the connection back
+            # to the httpx pool. A failure here must NOT skip finalization,
+            # otherwise the request is stuck in the log store as pending and
+            # metrics never increment.
+            try:
+                await response.aclose()
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.warning(
+                    "failed to close upstream stream response",
+                    extra={"provider": provider.name, "error": type(exc).__name__},
+                )
             if completed:
                 await registry.mark_success(provider.name)
             await self._finalize_request(
@@ -818,17 +853,44 @@ class ProxyService:
 
 
 class StreamUsageParser:
+    """Extracts ``usage`` from a forwarded SSE stream.
+
+    The parser is strictly opportunistic: it exists to populate metrics and
+    must never corrupt forwarding. Any decode error, binary body, or
+    content-encoding on the upstream response disables the parser and the
+    proxy keeps streaming raw bytes unchanged.
+    """
+
     def __init__(self) -> None:
         self._decoder = codecs.getincrementaldecoder("utf-8")()
         self._buffer = ""
+        self._disabled = False
         self.usage: UsageLogEntry | None = None
 
+    def disable(self) -> None:
+        self._disabled = True
+        self._buffer = ""
+
     def feed(self, chunk: bytes) -> None:
-        self._buffer += self._decoder.decode(chunk)
+        if self._disabled:
+            return
+        try:
+            self._buffer += self._decoder.decode(chunk)
+        except UnicodeDecodeError:
+            LOGGER.debug("usage parser disabled after non-utf8 chunk")
+            self.disable()
+            return
         self._consume_buffer()
 
     def finish(self) -> None:
-        self._buffer += self._decoder.decode(b"", final=True)
+        if self._disabled:
+            return
+        try:
+            self._buffer += self._decoder.decode(b"", final=True)
+        except UnicodeDecodeError:
+            LOGGER.debug("usage parser disabled on final flush")
+            self.disable()
+            return
         self._consume_buffer(final=True)
 
     def _consume_buffer(self, *, final: bool = False) -> None:

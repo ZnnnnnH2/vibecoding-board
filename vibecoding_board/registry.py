@@ -24,6 +24,8 @@ class ProviderState:
     def is_available(self, now: datetime) -> bool:
         if not self.provider.enabled:
             return False
+        if self.provider.always_alive:
+            return True
         return self.cooldown_until is None or now >= self.cooldown_until
 
     def supports_model(self, model: str) -> bool:
@@ -36,6 +38,7 @@ class ProviderSnapshot:
     base_url: str
     api_key: str
     enabled: bool
+    always_alive: bool
     priority: int
     timeout_seconds: float
     max_failures: int
@@ -57,6 +60,7 @@ class ProviderSnapshot:
             base_url=provider.base_url,
             api_key=provider.api_key,
             enabled=provider.enabled,
+            always_alive=provider.always_alive,
             priority=provider.priority,
             timeout_seconds=provider.timeout_seconds,
             max_failures=provider.max_failures,
@@ -112,15 +116,21 @@ class ProviderRegistry:
             ]
         return sorted(snapshots, key=lambda state: (state.priority, state.name))
 
-    async def import_states(self, previous_states: list[ProviderSnapshot]) -> None:
+    async def import_states(
+        self,
+        previous_states: list[ProviderSnapshot],
+        *,
+        name_mapping: dict[str, str] | None = None,
+    ) -> None:
         previous_map = {state.name: state for state in previous_states}
         async with self._lock:
             for name, state in self._states.items():
-                previous = previous_map.get(name)
+                lookup_name = name_mapping.get(name, name) if name_mapping else name
+                previous = previous_map.get(lookup_name)
                 if previous is None:
                     continue
                 state.consecutive_failures = previous.consecutive_failures
-                state.cooldown_until = previous.cooldown_until
+                state.cooldown_until = None if state.provider.always_alive else previous.cooldown_until
                 state.last_error = previous.last_error
                 state.last_failure_at = previous.last_failure_at
                 state.last_success_at = previous.last_success_at
@@ -146,7 +156,7 @@ class ProviderRegistry:
             state.consecutive_failures += 1
             state.last_error = error
             state.last_failure_at = now
-            if suppress_cooldown:
+            if suppress_cooldown or state.provider.always_alive:
                 state.cooldown_until = None
                 return
             if state.consecutive_failures >= state.provider.max_failures:
@@ -159,6 +169,9 @@ class ProviderRegistry:
             state.consecutive_failures = max(state.consecutive_failures + 1, state.provider.max_failures)
             state.last_error = error
             state.last_failure_at = now
+            if state.provider.always_alive:
+                state.cooldown_until = None
+                return
             state.cooldown_until = now + timedelta(seconds=state.provider.cooldown_seconds)
 
     async def get_state(self, provider_name: str) -> ProviderSnapshot:

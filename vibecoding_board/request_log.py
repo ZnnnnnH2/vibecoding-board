@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from statistics import mean
 import uuid
 
@@ -62,7 +62,7 @@ class RequestLogStore:
     ) -> str:
         entry = RequestLogEntry(
             id=uuid.uuid4().hex,
-            created_at=datetime.now().astimezone(),
+            created_at=datetime.now(UTC),
             endpoint=endpoint,
             request_kind=request_kind,
             model=model,

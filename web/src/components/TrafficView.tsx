@@ -51,7 +51,7 @@ const itemVariants: Variants = {
 }
 
 export function TrafficView({ requests }: TrafficViewProps) {
-  const { messages } = useI18n()
+  const { locale, messages } = useI18n()
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<RequestStateFilter>('all')
   const [kindFilter, setKindFilter] = useState<RequestKindFilter>('all')
@@ -189,7 +189,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
                         </td>
                         <td>{request.duration_ms ?? messages.app.notAvailable} ms</td>
                         <td>{request.ttfb_ms ?? messages.app.notAvailable} ms</td>
-                        <td>{formatTimestamp(request.created_at)}</td>
+                        <td>{formatTimestamp(request.created_at, locale)}</td>
                       </tr>
                       {expanded ? (
                         <tr className="expanded-row">

@@ -24,6 +24,7 @@ class RuntimeProvider:
     base_url: str
     api_key: str
     enabled: bool
+    always_alive: bool
     priority: int
     models: tuple[str, ...]
     healthcheck_model: str | None
@@ -89,6 +90,7 @@ class ProviderConfig(BaseModel):
     base_url: str
     api_key: str
     enabled: bool = True
+    always_alive: bool = False
     priority: int = 100
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
@@ -165,6 +167,7 @@ class ProviderConfig(BaseModel):
             base_url=self.base_url,
             api_key=self.resolve_api_key(),
             enabled=self.enabled,
+            always_alive=self.always_alive,
             priority=self.priority,
             models=tuple(self.models),
             healthcheck_model=self.healthcheck_model,
@@ -266,6 +269,7 @@ def dump_example_config() -> dict[str, Any]:
                 "base_url": "https://relay-a.example.com/v1",
                 "api_key": "env:RELAY_A_API_KEY",
                 "enabled": True,
+                "always_alive": False,
                 "priority": 10,
                 "models": ["gpt-4.1", "gpt-4o-mini"],
                 "timeout_seconds": 60,
@@ -277,6 +281,7 @@ def dump_example_config() -> dict[str, Any]:
                 "base_url": "https://relay-b.example.com/v1",
                 "api_key": "env:RELAY_B_API_KEY",
                 "enabled": True,
+                "always_alive": False,
                 "priority": 20,
                 "models": ["*"],
                 "healthcheck_model": "gpt-4o-mini",

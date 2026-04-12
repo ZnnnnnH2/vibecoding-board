@@ -109,18 +109,22 @@ function buildProviderPayload(form: ProviderFormState) {
           .map((value) => value.trim())
           .filter(Boolean)
   const priority = Number.parseInt(form.priority, 10)
+  const timeoutSeconds = Number(form.timeoutSeconds)
+  const maxFailures = Number.parseInt(form.maxFailures, 10)
+  const cooldownSeconds = Number(form.cooldownSeconds)
 
   return {
     name: form.name.trim(),
     base_url: form.baseUrl.trim(),
     api_key: form.apiKey.trim(),
     enabled: form.enabled,
+    always_alive: form.alwaysAlive,
     priority: Number.isNaN(priority) ? 10 : priority,
     models,
     healthcheck_model: form.healthcheckModel.trim() || null,
-    timeout_seconds: Number(form.timeoutSeconds),
-    max_failures: Number(form.maxFailures),
-    cooldown_seconds: Number(form.cooldownSeconds),
+    timeout_seconds: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : 60,
+    max_failures: Number.isFinite(maxFailures) && maxFailures >= 1 ? maxFailures : 3,
+    cooldown_seconds: Number.isFinite(cooldownSeconds) && cooldownSeconds >= 0 ? cooldownSeconds : 30,
   }
 }
 
@@ -201,6 +205,13 @@ export const api = {
 
   toggleProvider(name: string): Promise<MutationResponse> {
     return request<MutationResponse>(`/admin/api/providers/${encodeURIComponent(name)}/toggle`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  },
+
+  toggleProviderAlwaysAlive(name: string): Promise<MutationResponse> {
+    return request<MutationResponse>(`/admin/api/providers/${encodeURIComponent(name)}/always-alive/toggle`, {
       method: 'POST',
       body: JSON.stringify({}),
     })

@@ -52,6 +52,7 @@ export type ProviderSummary = {
   name: string
   base_url: string
   enabled: boolean
+  always_alive: boolean
   priority: number
   timeout_seconds: number
   max_failures: number
@@ -154,6 +155,7 @@ export type ProviderFormState = {
   baseUrl: string
   apiKey: string
   enabled: boolean
+  alwaysAlive: boolean
   priority: string
   modelMode: 'all' | 'explicit'
   modelText: string

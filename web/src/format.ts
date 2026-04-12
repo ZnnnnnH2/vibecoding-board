@@ -9,12 +9,12 @@ import type {
 import type { AppMessages } from './i18n'
 
 
-export function formatTimestamp(value: string | null): string {
+export function formatTimestamp(value: string | null, locale?: string): string {
   if (!value) {
     return 'N/A'
   }
 
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(locale ?? 'en', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -72,6 +72,10 @@ export function isProviderCooling(provider: Pick<ProviderSummary, 'cooldown_unti
 export function getProviderRoutingHint(provider: ProviderSummary, messages: AppMessages): string {
   if (!provider.enabled) {
     return messages.providers.ignoredByRouter
+  }
+
+  if (provider.always_alive) {
+    return messages.providers.alwaysAliveRouting
   }
 
   if (isProviderCooling(provider)) {

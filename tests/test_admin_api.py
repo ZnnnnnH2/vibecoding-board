@@ -176,6 +176,7 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["retry_policy"]["same_provider_retry_count"] == 0
         assert payload["retry_policy"]["retry_interval_ms"] == 0
         assert payload["healthcheck"]["stream"] is False
+        assert all(provider["always_alive"] is False for provider in payload["providers"])
 
 
 def test_dashboard_exposes_pending_requests_without_counting_them_in_stats(workspace_tmp_dir: Path) -> None:
@@ -230,6 +231,41 @@ def test_dashboard_primary_provider_stays_config_preferred_during_cooldown(works
     assert payload["primary_provider"] == "relay_a"
     assert relay_a["consecutive_failures"] == 2
     assert relay_a["cooldown_until"] is not None
+
+
+def test_toggle_provider_always_alive_clears_cooldown_and_restores_routing(workspace_tmp_dir: Path) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        initial = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "retryable"}]},
+        )
+        assert initial.status_code == 200
+        assert initial.json()["choices"][0]["message"]["content"] == "relay-b.example.com"
+
+        toggled = client.post("/admin/api/providers/relay_a/always-alive/toggle")
+
+        assert toggled.status_code == 200
+        relay_a = next(
+            provider
+            for provider in toggled.json()["dashboard"]["providers"]
+            if provider["name"] == "relay_a"
+        )
+        assert relay_a["always_alive"] is True
+        assert relay_a["cooldown_until"] is None
+
+        after = client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert after.status_code == 200
+        assert after.json()["choices"][0]["message"]["content"] == "relay-a.example.com"
+
+    saved = load_proxy_config(config_path)
+    relay_a = next(provider for provider in saved.providers if provider.name == "relay_a")
+    assert relay_a.always_alive is True
 
 
 def test_startup_normalizes_provider_priorities_and_writes_config(workspace_tmp_dir: Path) -> None:
@@ -427,6 +463,7 @@ def test_update_provider_preserves_existing_api_key_when_blank(workspace_tmp_dir
                 "base_url": "https://relay-a-2.example.com/v1",
                 "api_key": "",
                 "enabled": True,
+                "always_alive": True,
                 "priority": 10,
                 "models": ["gpt-4.1", "gpt-4o-mini"],
                 "healthcheck_model": "gpt-4.1",
@@ -445,6 +482,7 @@ def test_update_provider_preserves_existing_api_key_when_blank(workspace_tmp_dir
     assert renamed.api_key == "key-a"
     assert renamed.base_url == "https://relay-a-2.example.com/v1"
     assert renamed.healthcheck_model == "gpt-4.1"
+    assert renamed.always_alive is True
 
 
 def test_update_provider_priority_writes_config_and_changes_routing(workspace_tmp_dir: Path) -> None:
@@ -610,6 +648,7 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
                 "base_url": "https://relay-c.example.com/v1",
                 "api_key": "key-c",
                 "enabled": True,
+                "always_alive": True,
                 "priority": 30,
                 "models": ["*"],
                 "healthcheck_model": "gpt-4o-mini",
@@ -626,6 +665,7 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
     assert {provider.name for provider in saved.providers} == {"relay_a", "relay_b", "relay_c"}
     created = next(provider for provider in saved.providers if provider.name == "relay_c")
     assert created.healthcheck_model == "gpt-4o-mini"
+    assert created.always_alive is True
 
 
 def test_dashboard_global_stats_keep_deleted_provider_history(workspace_tmp_dir: Path) -> None:

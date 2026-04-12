@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 from typing import Literal
@@ -85,7 +85,7 @@ class HourlyMetricsBucket:
             if isinstance(provider_name, str) and isinstance(summary, dict)
         }
         return cls(
-            bucket_start=datetime.fromisoformat(str(payload["bucket_start"])).astimezone(),
+            bucket_start=datetime.fromisoformat(str(payload["bucket_start"])).astimezone(UTC),
             requests=int(payload.get("requests", 0)),
             success_count=int(payload.get("success_count", 0)),
             interrupted_count=int(payload.get("interrupted_count", 0)),
@@ -127,7 +127,7 @@ class AdminMetricsStore:
         except json.JSONDecodeError:
             return
         self.last_flushed_at = (
-            datetime.fromisoformat(payload["last_flushed_at"]).astimezone()
+            datetime.fromisoformat(payload["last_flushed_at"]).astimezone(UTC)
             if payload.get("last_flushed_at")
             else None
         )
@@ -139,7 +139,7 @@ class AdminMetricsStore:
             bucket.bucket_start.isoformat(): bucket
             for bucket in loaded_buckets
         }
-        self._trim_stale_buckets(datetime.now().astimezone())
+        self._trim_stale_buckets(datetime.now(UTC))
 
     async def close(self) -> None:
         if self._flush_task is not None:
@@ -161,7 +161,7 @@ class AdminMetricsStore:
         usage: UsageLogEntry | None,
         completed_at: datetime | None = None,
     ) -> None:
-        timestamp = (completed_at or datetime.now().astimezone()).astimezone()
+        timestamp = completed_at or datetime.now(UTC)
         bucket_start = timestamp.replace(minute=0, second=0, microsecond=0)
         bucket_key = bucket_start.isoformat()
         total_tokens = 0 if usage is None else usage.total_tokens or 0
@@ -199,26 +199,40 @@ class AdminMetricsStore:
         self._schedule_flush()
 
     async def flush(self) -> None:
+        # Snapshot + clear the dirty bit under the lock, then do the actual
+        # disk write off the event loop so concurrent request recorders are
+        # never blocked by filesystem latency.
         async with self._lock:
             if not self._dirty:
                 return
             buckets = sorted(self._buckets.values(), key=lambda bucket: bucket.bucket_start)
+            flushed_at = datetime.now(UTC)
             payload = {
-                "last_flushed_at": datetime.now().astimezone().isoformat(),
+                "last_flushed_at": flushed_at.isoformat(),
                 "retention_hours": self.retention_hours,
                 "buckets": [bucket.to_dict() for bucket in buckets],
             }
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            self.last_flushed_at = datetime.fromisoformat(payload["last_flushed_at"]).astimezone()
+            serialized = json.dumps(payload, ensure_ascii=False, indent=2)
             self._dirty = False
+            self.last_flushed_at = flushed_at
+
+        try:
+            await asyncio.to_thread(self._write_payload, serialized)
+        except Exception:
+            # Writing failed; re-arm the dirty bit so a later flush retries.
+            async with self._lock:
+                self._dirty = True
+            raise
+
+    def _write_payload(self, serialized: str) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.path.with_name(self.path.name + ".tmp")
+        tmp_path.write_text(serialized, encoding="utf-8")
+        tmp_path.replace(self.path)
 
     async def metrics_payload(self, *, window: MetricsWindow) -> dict[str, object]:
         hours = WINDOW_HOURS[window]
-        now = datetime.now().astimezone().replace(minute=0, second=0, microsecond=0)
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
         bucket_starts = [now - timedelta(hours=offset) for offset in reversed(range(hours))]
         bucket_keys = [bucket_start.isoformat() for bucket_start in bucket_starts]
 

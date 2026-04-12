@@ -1,114 +1,174 @@
 # vibecoding-board
 
-带故障切换、模型路由和内置管理后台的本地 OpenAI 兼容聚合代理。
+**别再到处改 API Key 和 base URL 了。一个本地入口，管好所有上游。**
 
-[English README](README.md)
+带自动故障切换、模型感知路由和实时管理后台的本地 OpenAI 兼容聚合代理。
 
-`vibecoding-board` 适合这样一种场景：你的客户端、脚本、IDE 插件和自动化工具都希望只连一个稳定的 `/v1` 地址，但你背后实际上有多个 OpenAI 兼容上游，希望按模型、优先级、健康状态来路由，并且在上游不稳定时自动切换。
+[快速开始](#快速开始) · [核心能力](#核心能力) · [管理后台](#管理后台) · [配置说明](#配置说明) · [English](README.md)
+
+---
+
+## 痛点
+
+你有 Cursor、Cline、aider、各种脚本——全都在调 OpenAI 兼容接口。你还有好几个中转 provider，用来做冗余或者省钱。每次切 provider，要改五个地方的 `base_url` 和 `api_key`。某个 provider 凌晨两点挂了，你的自动化悄无声息地全部失败。
+
+## 解法
+
+所有工具只配一次 `http://127.0.0.1:9000/v1`，剩下的交给 vibecoding-board：
 
 ```mermaid
 flowchart LR
-    Client["你的应用 / SDK"] --> Proxy["vibecoding-board<br/>http://127.0.0.1:9000/v1"]
-    Proxy --> A["relay_a"]
-    Proxy --> B["relay_b"]
-    Proxy --> C["更多 provider"]
-    Proxy --> Admin["/admin"]
+    C1["Cursor"] --> P["vibecoding-board :9000/v1"]
+    C2["Cline / aider"] --> P
+    C3["脚本 & SDK"] --> P
+    P -->|"priority 10"| A["relay_a — gpt-4.1, gpt-4o-mini"]
+    P -->|"priority 20"| B["relay_b — 通配兜底"]
+    P -->|"故障切换"| C["relay_c — 备用"]
+    P --> UI["/admin — 实时控制台"]
 ```
 
-## 这个项目为什么值得用
-
-- 只给所有客户端配置一个本地 OpenAI 兼容入口，不需要来回切换 `base_url`。
-- 支持按模型能力和优先级路由，把显式模型 provider 和通配 fallback provider 放在同一个控制面里。
-- 上游出现可重试错误时可以自动切换；流式请求在首包到来前也可以切换。
-- 自带 `/admin` 管理后台，不只是看状态，还能直接改 provider、改优先级、做健康检查、看流量。
-- 本地优先，不依赖数据库：配置写回 `config.yaml`，近期请求放内存，小时级指标落盘。
+- Provider A 挂了？请求自动切到 B——流式请求在首个 token 发出前也能切。
+- 要加个新 provider？在管理后台加就行，不用重启，不用改配置文件，热加载即时生效。
+- 想知道发生了什么？打开 Traffic 页，每个请求、每次 failover 尝试、每个耗时一目了然。
 
 ## 快速开始
 
-环境要求：Python 3.12+，以及 [`uv`](https://docs.astral.sh/uv/)。
-
-1. 安装依赖。
-2. 复制配置文件。
-3. 填入你的上游地址和 API Key。
-4. 启动代理并打开后台。
+**环境要求：** Python 3.12+ 和 [uv](https://docs.astral.sh/uv/)
 
 ```bash
-uv sync --extra dev
+# 安装
+git clone https://github.com/anthropics/vibecoding-board.git
+cd vibecoding-board
+uv sync
+
+# 配置
 cp config.example.yaml config.yaml
-export RELAY_A_API_KEY="your-key-a"
-export RELAY_B_API_KEY="your-key-b"
+# 编辑 config.yaml：填入你的上游 base_url 和 api_key
+
+# 启动
 uv run vibecoding-board --config config.yaml
 ```
+
+Windows PowerShell：
 
 ```powershell
-uv sync --extra dev
+git clone https://github.com/anthropics/vibecoding-board.git
+cd vibecoding-board
+uv sync
 Copy-Item config.example.yaml config.yaml
-$env:RELAY_A_API_KEY="your-key-a"
-$env:RELAY_B_API_KEY="your-key-b"
+# 编辑 config.yaml：填入你的上游 base_url 和 api_key
 uv run vibecoding-board --config config.yaml
 ```
 
-启动后默认地址：
+启动后有三个入口可用：
 
-- 代理入口：`http://127.0.0.1:9000/v1`
-- 管理后台：`http://127.0.0.1:9000/admin/`
-- 健康检查：`http://127.0.0.1:9000/healthz`
+| 地址 | 用途 |
+| ---- | ---- |
+| `http://127.0.0.1:9000/v1` | OpenAI 兼容代理——把你的工具指向这里 |
+| `http://127.0.0.1:9000/admin/` | 实时管理后台 |
+| `http://127.0.0.1:9000/healthz` | 健康检查 |
 
-如果你的 SDK 强制要求本地也填写一个 API Key，可以随便填一个非空占位值。真正发往上游的密钥由代理在服务端注入。
+**提示：** 如果你的 SDK 要求本地入口也填 API Key，随便填一个非空字符串就行。真正的上游密钥由代理在服务端注入。
 
-## 先跑一个请求试试
+### 跑个请求试试
 
 ```bash
+# 健康检查
 curl http://127.0.0.1:9000/healthz
+
+# 查看可用模型
 curl http://127.0.0.1:9000/v1/models
+
+# 发个请求
 curl http://127.0.0.1:9000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4.1",
-    "messages": [{"role": "user", "content": "hello"}]
-  }'
+  -d '{"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
-## 它已经提供了什么
+## 核心能力
 
-- `POST /v1/chat/completions`
-- `POST /v1/responses`
-- `GET /v1/models`
-- `GET /healthz`
-- 多 provider 的模型感知路由
-- 遇到 `429` 和已配置 `5xx` 时的自动切换
-- 同一 provider 先重试、再切到下一个 provider 的策略
-- 基于失败次数和冷却时间的简单熔断
-- 内置 `/admin` 管理界面
-- 近期请求查看，包含每次 fallback 尝试的轨迹
-- 小时级图表和聚合指标，持久化到 `./data/metrics/admin_hourly.json`
-- 管理界面中英文切换，以及明暗主题偏好
+### 即插即用
 
-## 路由与故障切换规则
+兼容一切支持 OpenAI API 的工具——Cursor、Cline、aider、Continue、Open Interpreter、LangChain、OpenAI SDK，或者直接 `curl`。同时支持 `/v1/chat/completions` 和 `/v1/responses`。
 
-- 先按模型支持筛选 provider，再按 `priority` 排序，数值越小越优先。
-- `models: ["*"]` 可以作为兜底 provider，承接没有被显式 provider 命中的模型。
-- 非流式请求可以先在同一 provider 上重试，重试预算耗尽后再切到下一个 provider。
-- 流式请求只能在首个 chunk 返回给客户端之前切换。一旦首包已经发出，后续中断会被记录并返回客户端，而不会偷偷重放到其他 provider。
-- 某个 provider 持续出现可重试错误时，会进入 `cooldown_seconds` 指定的冷却期，之后自动恢复参与路由。
+### 智能路由
+
+先按模型支持筛选 provider，再按优先级排序。主力 provider 用显式模型列表，`models: ["*"]` 做通配兜底。
+
+### 自动故障切换
+
+当上游返回 `429`、`502` 或其他可重试错误时：
+
+1. **同 provider 重试** — 可配置重试次数，先在当前 provider 上再试几次
+2. **跨 provider 切换** — 当前 provider 用尽预算后，自动切到下一个
+3. **流式切换** — 流式请求在首个 token 发给客户端之前也能切换
+
+### 熔断保护
+
+持续失败的 provider 会进入冷却期，`cooldown_seconds` 后自动恢复。标记为**始终存活**的 provider 跳过冷却——适合你最关键的那个中转。
+
+### 全量热重载
+
+在管理后台做的每个操作——加 provider、改优先级、启停、改重试策略——都会写回 `config.yaml` 并立即生效，不需要重启进程。
+
+### 内建可观测性
+
+- 近期请求日志，每次 failover 尝试都有完整轨迹
+- 小时级指标持久化到磁盘，带趋势图表
+- 按 provider 拆分的流量和成功率
+- 全部在浏览器里看，不需要装 Grafana 或 Prometheus
 
 ## 管理后台
 
-这个后台不是展示页，而是日常运维入口。
+这个后台是真正的运维工作台，不是演示页。
 
-- Overview 页面展示代理入口、主 provider、统计概览和趋势指标
-- Providers 页面支持新增、编辑、删除、启用、停用、改优先级、提升为主路由
-- 支持单个 provider 手动健康检查，可选普通模式或流式模式
-- Traffic 页面展示请求状态、耗时、TTFB、usage 字段和 fallback 轨迹
-- Settings 页面支持修改 retry policy 和全局健康检查模式
-- 支持英文和中文界面切换
-- 已保存的 API Key 不会从后端回传到浏览器
+### Overview（总览）
 
-所有管理操作都会写回 `config.yaml`，并对正在运行的代理进行热重载。
+全局健康状态、首选 provider、关键指标、近期流量预览、小时级趋势图——一屏掌握。
 
-## 配置示例
+### Providers
 
-完整示例见 [config.example.yaml](config.example.yaml)。
+逐个 provider 操作：新增、编辑、删除、启停、改优先级、提升为首选、切换始终存活、手动健康检查（普通或流式）。
+
+### Traffic（流量）
+
+检查每个被代理的请求：模型、provider、HTTP 状态码、耗时、TTFB、token 用量，以及完整的 failover 尝试链。
+
+### Settings（设置）
+
+调整可重试状态码、同 provider 重试次数、重试间隔、全局健康检查传输模式。
+
+> **安全性：** 已保存的 API Key 不会从后端回传到浏览器。管理界面可以提交新密钥，但存储的密钥始终留在服务端。
+> **多语言：** 完整的中英文界面。明暗主题自动跟随系统偏好。
+
+## 路由流程
+
+```text
+请求到达，model: "gpt-4.1"
+  │
+  ├─ 筛选：哪些 provider 支持 "gpt-4.1"？
+  │    ├─ relay_a（显式：gpt-4.1, gpt-4o-mini）  ✓
+  │    ├─ relay_b（通配：*）                       ✓
+  │    └─ relay_c（显式：claude-sonnet-4-20250514）        ✗
+  │
+  ├─ 按 priority 排序（越小越优先）
+  │    ├─ relay_a  priority 10  → 先试
+  │    └─ relay_b  priority 20  → 兜底
+  │
+  ├─ 尝试 relay_a
+  │    ├─ 成功 → 返回响应
+  │    ├─ 可重试错误（429, 5xx）→ 如果还有预算就同 provider 重试
+  │    └─ 用尽 → 切到 relay_b
+  │
+  └─ 全部 provider 用尽 → 返回 503，附带每次尝试的详情
+```
+
+- **非流式：** 完整走完重试 + 切换链路后才返回给客户端。
+- **流式：** 只在首个 chunk 发出前能切换。一旦开始流式传输，中断会被记录但不会悄悄重放到其他 provider——客户端看到的是部分输出，而不是无声切换。
+
+## 配置说明
+
+完整注释示例见 [config.example.yaml](config.example.yaml)。
 
 ```yaml
 listen:
@@ -117,21 +177,21 @@ listen:
 
 retry_policy:
   retryable_status_codes: [429, 500, 502, 503, 504]
-  same_provider_retry_count: 0
-  retry_interval_ms: 0
+  same_provider_retry_count: 0     # 同 provider 额外重试次数
+  retry_interval_ms: 0             # 同 provider 重试间隔
 
 healthcheck:
-  stream: false
+  stream: false                    # true = 流式健康检查
 
 providers:
   - name: relay_a
     base_url: https://relay-a.example.com/v1
-    api_key: env:RELAY_A_API_KEY
+    api_key: env:RELAY_A_API_KEY   # 从环境变量读取
     enabled: true
-    priority: 10
+    priority: 10                   # 越小越优先
     models: [gpt-4.1, gpt-4o-mini]
     timeout_seconds: 60
-    max_failures: 3
+    max_failures: 3                # 进入冷却前的失败次数
     cooldown_seconds: 30
 
   - name: relay_b
@@ -139,58 +199,64 @@ providers:
     api_key: env:RELAY_B_API_KEY
     enabled: true
     priority: 20
-    models: ["*"]
-    healthcheck_model: gpt-4o-mini
+    models: ["*"]                  # 通配：接受任意模型
+    healthcheck_model: gpt-4o-mini # 通配 provider 手动检查必填
     timeout_seconds: 60
     max_failures: 3
     cooldown_seconds: 30
 ```
 
-关键说明：
+**关键说明：**
 
-- `base_url` 一般应该指向上游 API 根路径，通常以 `/v1` 结尾。
-- `api_key: env:NAME` 表示从环境变量读取密钥，避免把真实密钥写进仓库。
-- 通配模型 provider 建议显式设置 `healthcheck_model`，否则后台手动健康检查没有具体模型可测。
-- 启动和保存配置时，系统会规范化 priority 的间隔，但会保持相对顺序不变。
-- `GET /v1/models` 返回的是已启用 provider 中显式模型的并集，不会把通配 provider 扩展成一大串虚构模型名。
+- `api_key: env:NAME` 从环境变量读取密钥——不要把真实密钥提交到仓库。
+- 通配 provider 需要设置 `healthcheck_model`，否则手动健康检查没有具体模型可测。
+- `GET /v1/models` 返回所有已启用 provider 中显式模型的并集。
+- 启动时会自动规范化 priority 间距，但保持相对顺序不变。
 
-## 行为边界与注意事项
+## 适合谁
 
-- 近期请求记录只保存在内存里，适合排查实时问题，不适合作为长期审计日志。
-- 小时级指标会持久化到本地文件，用于图表和聚合统计。
-- 这个项目更适合本地工作流、自建中转和小团队内部网关，不是面向全球边缘节点的超大规模网关。
-- 浏览器端可以提交新的密钥，但后端不会把已保存的密钥重新回显到 dashboard 响应里。
-- 如果你很依赖流式输出，需要理解一个边界：只有在首包前才能切换，首包后不会自动“无损接续”到别的 provider。
+| 场景 | vibecoding-board 怎么帮你 |
+| ---- | ---- |
+| **个人开发者**，用 Cursor + 脚本 + CLI 工具 | 所有地方只配一个 `base_url`，在后台改优先级就能切 provider |
+| **小团队**共享中转 | 集中路由 + 自动 failover，在 Traffic 页看谁在用什么 |
+| **多 provider 部署**，为了成本或冗余 | 主力挂了备用自动顶上，不需要人工干预 |
+| **评估 provider** | 用内建指标对比各 provider 的延迟和可靠性 |
 
-## 适合哪些场景
-
-- 个人开发者希望给 IDE、脚本、桌面客户端统一一个稳定的 `/v1` 地址
-- 小团队需要把多个 OpenAI 兼容中转聚合成一个可管理、可切换、可观察的本地网关
-- 自建代理链路里需要一个轻量控制台，可以快速知道请求失败在哪个 provider、是否发生过 fallback、当前谁是主路由
-
-## 开发与测试
-
-后端：
+## 开发
 
 ```bash
+# 后端
 uv run vibecoding-board --config config.yaml
 uv run pytest
-```
 
-前端：
-
-```bash
+# 前端（管理后台）
 cd web
-npm install --cache .npm-cache
-npm run dev
+npm install
+npm run dev      # 开发服务器，支持 HMR
+npm run build    # 生产构建 → vibecoding_board/static/admin/
 npm run lint
-npm run build
 ```
 
-构建后的管理后台静态资源位于 `vibecoding_board/static/admin`。如果修改前端源码，请在 `web/src/` 中开发并重新构建，不要直接改打包产物。
+## 项目结构
 
-## 项目索引
+```text
+vibecoding_board/          # Python 后端（FastAPI）
+  ├── app.py               # 应用工厂和路由装配
+  ├── service.py           # 代理逻辑、故障切换、流式处理
+  ├── registry.py          # Provider 状态、冷却、候选选择
+  ├── runtime.py           # 热重载运行时管理器
+  ├── config.py            # YAML 配置解析和校验
+  ├── admin_api.py         # 管理 REST 端点
+  ├── admin_metrics.py     # 小时级指标存储
+  └── static/admin/        # 前端构建产物
+web/src/                   # React + TypeScript 前端
+  ├── App.tsx              # 外壳、导航、状态管理
+  ├── api.ts               # 后端 API 客户端
+  ├── components/          # OverviewView, ProvidersView, TrafficView, ...
+  └── i18n.tsx             # 中英文消息目录
+config.example.yaml        # 带注释的配置模板
+```
 
-- 配置示例：[config.example.yaml](config.example.yaml)
-- 管理后台源码：[web/src](web/src)
-- 设计文档：[docs/superpowers/specs](docs/superpowers/specs)
+## License
+
+MIT

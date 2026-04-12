@@ -9,6 +9,7 @@ import {
 
 import { formatTimestamp } from '../format'
 import { useI18n } from '../i18n'
+import type { AppLocale } from '../i18n'
 
 import type {
   MetricsPoint,
@@ -96,7 +97,7 @@ function latestPoint(points: MetricsPoint[]): MetricsPoint | null {
 }
 
 
-function axisLabels(points: MetricsPoint[]) {
+function axisLabels(points: MetricsPoint[], locale: string) {
   if (points.length === 0) {
     return []
   }
@@ -104,7 +105,7 @@ function axisLabels(points: MetricsPoint[]) {
   const indexes = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]))
   return indexes.map((index) => ({
     key: `${points[index].bucket_start}:${index}`,
-    label: formatTimestamp(points[index].bucket_start),
+    label: formatTimestamp(points[index].bucket_start, locale),
   }))
 }
 
@@ -117,6 +118,7 @@ export function LineTrendCard({
   color,
   icon,
 }: LineTrendCardProps) {
+  const { locale } = useI18n()
   const { path, areaPath } = normalizePoints(points)
   const latest = latestPoint(points)
 
@@ -144,7 +146,7 @@ export function LineTrendCard({
       </div>
 
       <div className="chart-axis-labels">
-        {axisLabels(points).map((item) => (
+        {axisLabels(points, locale).map((item) => (
           <span key={item.key}>{item.label}</span>
         ))}
       </div>
@@ -163,6 +165,7 @@ export function DualTrendCard({
   secondaryLabel,
   secondaryColor,
 }: DualTrendCardProps) {
+  const { locale } = useI18n()
   const primary = normalizePoints(primaryPoints)
   const secondary = normalizePoints(secondaryPoints)
 
@@ -197,7 +200,7 @@ export function DualTrendCard({
       </div>
 
       <div className="chart-axis-labels">
-        {axisLabels(primaryPoints).map((item) => (
+        {axisLabels(primaryPoints, locale).map((item) => (
           <span key={item.key}>{item.label}</span>
         ))}
       </div>

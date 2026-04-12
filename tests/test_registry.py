@@ -8,12 +8,19 @@ from vibecoding_board.config import RuntimeProvider
 from vibecoding_board.registry import ProviderRegistry
 
 
-def make_provider(name: str, *, priority: int, models: list[str]) -> RuntimeProvider:
+def make_provider(
+    name: str,
+    *,
+    priority: int,
+    models: list[str],
+    always_alive: bool = False,
+) -> RuntimeProvider:
     return RuntimeProvider(
         name=name,
         base_url=f"https://{name}.example.com/v1",
         api_key="test-key",
         enabled=True,
+        always_alive=always_alive,
         priority=priority,
         models=tuple(models),
         healthcheck_model=None,
@@ -72,3 +79,45 @@ async def test_registry_opens_and_recovers_after_cooldown() -> None:
 
     assert state.consecutive_failures == 0
     assert state.cooldown_until is None
+
+
+@pytest.mark.anyio
+async def test_registry_always_alive_provider_stays_available_after_failures() -> None:
+    registry = ProviderRegistry(
+        [make_provider("relay_a", priority=10, models=["gpt-4.1"], always_alive=True)]
+    )
+
+    await registry.mark_retryable_failure("relay_a", "timeout")
+    await registry.mark_retryable_failure("relay_a", "timeout")
+
+    candidates = await registry.get_candidates("gpt-4.1")
+    state = await registry.get_state("relay_a")
+
+    assert [candidate.name for candidate in candidates] == ["relay_a"]
+    assert state.consecutive_failures == 2
+    assert state.cooldown_until is None
+
+
+@pytest.mark.anyio
+async def test_registry_reapplies_future_cooldown_after_always_alive_is_removed() -> None:
+    registry = ProviderRegistry(
+        [make_provider("relay_a", priority=10, models=["gpt-4.1"], always_alive=True)]
+    )
+    await registry.mark_retryable_failure("relay_a", "timeout")
+    await registry.mark_retryable_failure("relay_a", "timeout")
+
+    previous_states = await registry.list_states()
+
+    updated_registry = ProviderRegistry(
+        [make_provider("relay_a", priority=10, models=["gpt-4.1"], always_alive=False)]
+    )
+    await updated_registry.import_states(previous_states)
+
+    imported_state = await updated_registry.get_state("relay_a")
+    assert imported_state.cooldown_until is None
+
+    await updated_registry.mark_retryable_failure("relay_a", "timeout")
+    final_state = await updated_registry.get_state("relay_a")
+
+    assert final_state.consecutive_failures == 3
+    assert final_state.cooldown_until is not None

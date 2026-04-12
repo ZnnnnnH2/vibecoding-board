@@ -32,6 +32,7 @@ type ProvidersViewProps = {
   onHealthcheck: (provider: ProviderSummary) => void
   onPromote: (provider: ProviderSummary) => void
   onToggle: (provider: ProviderSummary) => void
+  onToggleAlwaysAlive: (provider: ProviderSummary) => void
   onDelete: (provider: ProviderSummary) => void
   onPrioritySave: (provider: ProviderSummary, priority: number) => Promise<boolean>
 }
@@ -71,10 +72,11 @@ export function ProvidersView({
   onHealthcheck,
   onPromote,
   onToggle,
+  onToggleAlwaysAlive,
   onDelete,
   onPrioritySave,
 }: ProvidersViewProps) {
-  const { messages } = useI18n()
+  const { locale, messages } = useI18n()
   const [search, setSearch] = useState('')
   const [enabledOnly, setEnabledOnly] = useState(false)
   const [statusFilter, setStatusFilter] = useState<ProviderFilter>('all')
@@ -265,11 +267,13 @@ export function ProvidersView({
                             {messages.providers.failuresCount(provider.consecutive_failures, provider.max_failures)}
                           </strong>
                           <span>
-                            {messages.providers.avgWithCooldown(formatNumber(stats?.average_duration_ms ?? null), provider.cooldown_seconds)}
+                            {provider.always_alive
+                              ? messages.providers.avgWithAlwaysAlive(formatNumber(stats?.average_duration_ms ?? null))
+                              : messages.providers.avgWithCooldown(formatNumber(stats?.average_duration_ms ?? null), provider.cooldown_seconds)}
                           </span>
                         </div>
                       </td>
-                      <td>{formatTimestamp(provider.last_success_at)}</td>
+                      <td>{formatTimestamp(provider.last_success_at, locale)}</td>
                       <td>
                         <div className="action-cluster">
                           <button
@@ -303,6 +307,14 @@ export function ProvidersView({
                             disabled={busyAction !== null}
                           >
                             {busyAction === `toggle:${provider.name}` ? messages.providers.saving : provider.enabled ? messages.providers.disable : messages.providers.enable}
+                          </button>
+                          <button
+                            type="button"
+                            className="table-action"
+                            onClick={() => onToggleAlwaysAlive(provider)}
+                            disabled={busyAction !== null}
+                          >
+                            {busyAction === `always-alive:${provider.name}` ? messages.providers.saving : provider.always_alive ? messages.providers.disableAlwaysAlive : messages.providers.alwaysAlive}
                           </button>
                           <button
                             type="button"

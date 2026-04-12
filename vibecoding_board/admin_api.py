@@ -18,6 +18,7 @@ class ProviderCreatePayload(BaseModel):
     base_url: str
     api_key: str
     enabled: bool = True
+    always_alive: bool = False
     priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
@@ -31,6 +32,7 @@ class ProviderCreatePayload(BaseModel):
             base_url=self.base_url,
             api_key=self.api_key,
             enabled=self.enabled,
+            always_alive=self.always_alive,
             priority=self.priority if self.priority is not None else default_priority,
             models=self.models,
             healthcheck_model=self.healthcheck_model,
@@ -47,6 +49,7 @@ class ProviderUpdatePayload(BaseModel):
     base_url: str
     api_key: str | None = None
     enabled: bool = True
+    always_alive: bool = False
     priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
@@ -66,6 +69,7 @@ class ProviderUpdatePayload(BaseModel):
             base_url=self.base_url,
             api_key=api_key,
             enabled=self.enabled,
+            always_alive=self.always_alive,
             priority=self.priority if self.priority is not None else default_priority,
             models=self.models,
             healthcheck_model=self.healthcheck_model,
@@ -297,6 +301,24 @@ def build_admin_router() -> APIRouter:
             manager,
             request_log_store,
             admin_message(locale, "toggled_provider", provider=provider_name),
+        )
+
+    @router.post("/providers/{provider_name}/always-alive/toggle")
+    async def toggle_provider_always_alive(provider_name: str, request: Request):
+        locale = resolve_admin_locale(request)
+        manager = get_manager(request)
+        request_log_store = get_request_log_store(request)
+        try:
+            await manager.toggle_provider_always_alive(provider_name)
+        except RuntimeMutationError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "toggled_provider_always_alive", provider=provider_name),
         )
 
     @router.post("/providers/{provider_name}/healthcheck")

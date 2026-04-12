@@ -146,7 +146,13 @@ class RuntimeManager:
                 healthcheck=config.healthcheck.model_copy(deep=True),
                 providers=providers,
             )
-            return await self._persist_and_activate(updated)
+            new_name = replacement.name
+            renamed = new_name != current_name
+            name_mapping = {new_name: current_name} if renamed else None
+            runtime = await self._persist_and_activate(updated, name_mapping=name_mapping)
+            if renamed:
+                await self._migrate_healthcheck(current_name, new_name)
+            return runtime
 
     async def update_provider_priority(
         self,
@@ -173,6 +179,21 @@ class RuntimeManager:
             index = self._find_provider_index(providers, provider_name)
             current = providers[index]
             providers[index] = current.model_copy(update={"enabled": not current.enabled})
+            updated = ProxyConfig(
+                listen=config.listen.model_copy(deep=True),
+                retry_policy=config.retry_policy.model_copy(deep=True),
+                healthcheck=config.healthcheck.model_copy(deep=True),
+                providers=providers,
+            )
+            return await self._persist_and_activate(updated)
+
+    async def toggle_provider_always_alive(self, provider_name: str) -> RuntimeSnapshot:
+        async with self._mutation_lock:
+            config = self.current().config.model_copy(deep=True)
+            providers = list(config.providers)
+            index = self._find_provider_index(providers, provider_name)
+            current = providers[index]
+            providers[index] = current.model_copy(update={"always_alive": not current.always_alive})
             updated = ProxyConfig(
                 listen=config.listen.model_copy(deep=True),
                 retry_policy=config.retry_policy.model_copy(deep=True),
@@ -235,8 +256,13 @@ class RuntimeManager:
             )
             return await self._persist_and_activate(updated)
 
-    async def _persist_and_activate(self, config: ProxyConfig) -> RuntimeSnapshot:
-        runtime = await self._build_runtime(config, previous=self.current())
+    async def _persist_and_activate(
+        self,
+        config: ProxyConfig,
+        *,
+        name_mapping: dict[str, str] | None = None,
+    ) -> RuntimeSnapshot:
+        runtime = await self._build_runtime(config, previous=self.current(), name_mapping=name_mapping)
         self.config_store.save(config)
         self._runtime = runtime
         return runtime
@@ -246,6 +272,7 @@ class RuntimeManager:
         config: ProxyConfig,
         *,
         previous: RuntimeSnapshot | None,
+        name_mapping: dict[str, str] | None = None,
     ) -> RuntimeSnapshot:
         try:
             runtime_providers = [provider.to_runtime_provider() for provider in config.providers]
@@ -254,13 +281,31 @@ class RuntimeManager:
 
         registry = ProviderRegistry(runtime_providers)
         if previous is not None:
-            await registry.import_states(await previous.registry.list_states())
+            await registry.import_states(
+                await previous.registry.list_states(),
+                name_mapping=name_mapping,
+            )
         return RuntimeSnapshot(
             config=config,
             registry=registry,
             reloaded_at=utc_now(),
             config_path=self.config_store.path,
         )
+
+    async def _migrate_healthcheck(self, old_name: str, new_name: str) -> None:
+        async with self._health_lock:
+            old_snapshot = self._healthchecks.pop(old_name, None)
+            if old_snapshot is not None:
+                self._healthchecks[new_name] = HealthcheckSnapshot(
+                    provider_name=new_name,
+                    checked_at=old_snapshot.checked_at,
+                    ok=old_snapshot.ok,
+                    status_code=old_snapshot.status_code,
+                    latency_ms=old_snapshot.latency_ms,
+                    stream=old_snapshot.stream,
+                    model=old_snapshot.model,
+                    error=old_snapshot.error,
+                )
 
     async def _healthcheck_map(self, provider_names: list[str]) -> dict[str, HealthcheckSnapshot]:
         async with self._health_lock:
@@ -290,6 +335,7 @@ class RuntimeManager:
             "name": provider.name,
             "base_url": provider.base_url,
             "enabled": provider.enabled,
+            "always_alive": provider.always_alive,
             "priority": provider.priority,
             "timeout_seconds": provider.timeout_seconds,
             "max_failures": provider.max_failures,

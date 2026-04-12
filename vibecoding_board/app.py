@@ -17,6 +17,15 @@ from vibecoding_board.service import ProxyService, build_error_response
 
 STATIC_ADMIN_DIR = Path(__file__).resolve().parent / "static" / "admin"
 
+# Connection pool sized for a concurrent aggregation proxy. The defaults
+# (max_connections=100, max_keepalive_connections=20) start queueing long
+# before uvicorn/asyncio would, which caps throughput for no good reason.
+UPSTREAM_POOL_LIMITS = httpx.Limits(
+    max_connections=1000,
+    max_keepalive_connections=200,
+    keepalive_expiry=30.0,
+)
+
 
 def create_app(
     config_path: str | Path,
@@ -27,7 +36,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        client = httpx.AsyncClient(timeout=None, transport=transport, follow_redirects=False)
+        client = httpx.AsyncClient(
+            timeout=None,
+            transport=transport,
+            follow_redirects=False,
+            limits=UPSTREAM_POOL_LIMITS,
+        )
         runtime_manager = RuntimeManager(config_path)
         request_log_store = RequestLogStore()
         metrics_store = AdminMetricsStore(config_path.parent / "data" / "metrics" / "admin_hourly.json")

@@ -76,7 +76,7 @@ export function OverviewView({
   onMetricsWindowChange,
   onNavigate,
 }: OverviewViewProps) {
-  const { messages } = useI18n()
+  const { locale, messages } = useI18n()
   const sortedProviders = sortProviders(dashboard.providers)
   const recentPreview = dashboard.recent_requests.slice(0, 5)
   const stateItems = [
@@ -288,7 +288,7 @@ export function OverviewView({
             </div>
             <div className="runtime-card">
               <span className="surface-label">{messages.overview.lastReload}</span>
-              <strong>{formatTimestamp(dashboard.reloaded_at)}</strong>
+              <strong>{formatTimestamp(dashboard.reloaded_at, locale)}</strong>
             </div>
             <div className="runtime-card">
               <span className="surface-label">{messages.overview.usageRows}</span>
@@ -337,7 +337,7 @@ export function OverviewView({
                       <span className={`pill pill-${requestState.tone}`}>
                         {requestState.label}
                       </span>
-                      <small>{formatTimestamp(request.created_at)}</small>
+                      <small>{formatTimestamp(request.created_at, locale)}</small>
                     </div>
                   </button>
                 )
@@ -405,7 +405,7 @@ export function OverviewView({
                     </td>
                     <td>{stats?.served_requests ?? 0}</td>
                     <td>{formatNumber(stats?.average_duration_ms ?? null)} ms</td>
-                    <td>{formatTimestamp(provider.last_success_at)}</td>
+                    <td>{formatTimestamp(provider.last_success_at, locale)}</td>
                   </tr>
                 )
               })}
