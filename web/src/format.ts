@@ -8,6 +8,11 @@ import type {
 } from './types'
 import type { AppMessages } from './i18n'
 
+const compactCountFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  compactDisplay: 'short',
+  maximumFractionDigits: 1,
+})
 
 export function formatTimestamp(value: string | null, locale?: string): string {
   if (!value) {
@@ -36,6 +41,20 @@ export function formatNumber(value: number | null): string {
     return 'N/A'
   }
   return `${Math.round(value)}`
+}
+
+
+export function formatCountCompact(value: number | null | undefined, fallback = 'N/A'): string {
+  if (value == null) {
+    return fallback
+  }
+
+  const rounded = Math.round(value)
+  if (Math.abs(rounded) < 1000) {
+    return `${rounded}`
+  }
+
+  return compactCountFormatter.format(rounded)
 }
 
 

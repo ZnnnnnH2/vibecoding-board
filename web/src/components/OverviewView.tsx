@@ -20,6 +20,7 @@ import {
 } from './MetricsCharts'
 import {
   findProviderStats,
+  formatCountCompact,
   formatNumber,
   formatPercent,
   formatTimestamp,
@@ -31,12 +32,13 @@ import {
 } from '../format'
 import { useI18n } from '../i18n'
 
-import type { DashboardResponse, MetricsResponse, MetricsWindow } from '../types'
+import type { DashboardResponse, MetricsResponse, MetricsWindow, TokenUsageResponse } from '../types'
 
 
 type OverviewViewProps = {
   dashboard: DashboardResponse
   metrics: MetricsResponse | null
+  tokenUsage: TokenUsageResponse | null
   metricsWindow: MetricsWindow
   proxyBase: string
   loading: boolean
@@ -70,6 +72,7 @@ const itemVariants: Variants = {
 export function OverviewView({
   dashboard,
   metrics,
+  tokenUsage,
   metricsWindow,
   proxyBase,
   loading,
@@ -144,7 +147,7 @@ export function OverviewView({
             <span className="surface-label">{messages.overview.providers}</span>
             <Boxes size={16} />
           </div>
-          <strong>{dashboard.providers.length}</strong>
+          <strong>{formatCountCompact(dashboard.providers.length)}</strong>
           <p>{messages.overview.providersCopy}</p>
         </article>
 
@@ -180,10 +183,101 @@ export function OverviewView({
             <span className="surface-label">{messages.overview.servedRequests}</span>
             <Waves size={16} />
           </div>
-          <strong>{dashboard.stats.global.served_requests}</strong>
+          <strong>{formatCountCompact(dashboard.stats.global.served_requests)}</strong>
           <p>{messages.overview.servedRequestsCopy}</p>
         </article>
       </motion.section>
+
+      {tokenUsage && tokenUsage.total_requests > 0 && (
+        <motion.section variants={itemVariants} className="surface-card">
+          <div className="section-header">
+            <div>
+              <span className="eyebrow">{messages.overview.tokenUsageEyebrow}</span>
+              <h2>{messages.overview.tokenUsageTitle}</h2>
+            </div>
+          </div>
+          <p className="section-copy">{messages.overview.tokenUsageCopy}</p>
+
+          <div className="kpi-grid" style={{ marginTop: '1rem' }}>
+            <article className="kpi-card">
+              <span className="surface-label">{messages.overview.totalTokens}</span>
+              <strong>{formatCountCompact(tokenUsage.total_tokens)}</strong>
+            </article>
+            <article className="kpi-card">
+              <span className="surface-label">{messages.overview.inputTokens}</span>
+              <strong>{formatCountCompact(tokenUsage.input_tokens)}</strong>
+            </article>
+            <article className="kpi-card">
+              <span className="surface-label">{messages.overview.outputTokens}</span>
+              <strong>{formatCountCompact(tokenUsage.output_tokens)}</strong>
+            </article>
+            <article className="kpi-card">
+              <span className="surface-label">{messages.overview.totalRequests}</span>
+              <strong>{formatCountCompact(tokenUsage.total_requests)}</strong>
+            </article>
+          </div>
+
+          {Object.keys(tokenUsage.providers).length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <span className="surface-label">{messages.overview.tokensByProvider}</span>
+              <div className="snapshot-table-wrap" style={{ marginTop: '0.5rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{messages.providers.provider}</th>
+                      <th>{messages.overview.totalTokens}</th>
+                      <th>{messages.overview.inputTokens}</th>
+                      <th>{messages.overview.outputTokens}</th>
+                      <th>{messages.overview.totalRequests}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(tokenUsage.providers).map(([name, stats]) => (
+                      <tr key={name}>
+                        <td><strong>{name}</strong></td>
+                        <td>{formatCountCompact(stats.total_tokens)}</td>
+                        <td>{formatCountCompact(stats.input_tokens)}</td>
+                        <td>{formatCountCompact(stats.output_tokens)}</td>
+                        <td>{formatCountCompact(stats.requests)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {Object.keys(tokenUsage.models).length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <span className="surface-label">{messages.overview.tokensByModel}</span>
+              <div className="snapshot-table-wrap" style={{ marginTop: '0.5rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{messages.providers.models}</th>
+                      <th>{messages.overview.totalTokens}</th>
+                      <th>{messages.overview.inputTokens}</th>
+                      <th>{messages.overview.outputTokens}</th>
+                      <th>{messages.overview.totalRequests}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(tokenUsage.models).map(([name, stats]) => (
+                      <tr key={name}>
+                        <td><strong>{name}</strong></td>
+                        <td>{formatCountCompact(stats.total_tokens)}</td>
+                        <td>{formatCountCompact(stats.input_tokens)}</td>
+                        <td>{formatCountCompact(stats.output_tokens)}</td>
+                        <td>{formatCountCompact(stats.requests)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </motion.section>
+      )}
 
       <motion.section variants={itemVariants} className="surface-card">
         <div className="section-header">
@@ -222,6 +316,7 @@ export function OverviewView({
               description={messages.overview.requestsTrendCopy}
               points={metrics.timeseries.requests}
               latestLabel={messages.overview.latestRequests}
+              formatLatestValue={formatCountCompact}
               color="var(--accent)"
               icon="requests"
             />
@@ -230,6 +325,7 @@ export function OverviewView({
               description={messages.overview.tokensTrendCopy}
               points={metrics.timeseries.tokens}
               latestLabel={messages.overview.latestTokens}
+              formatLatestValue={formatCountCompact}
               color="#0ea5e9"
               icon="tokens"
             />
@@ -292,7 +388,7 @@ export function OverviewView({
             </div>
             <div className="runtime-card">
               <span className="surface-label">{messages.overview.usageRows}</span>
-              <strong>{dashboard.stats.global.requests_with_usage}</strong>
+              <strong>{formatCountCompact(dashboard.stats.global.requests_with_usage)}</strong>
             </div>
           </div>
         </article>
@@ -403,7 +499,7 @@ export function OverviewView({
                         </span>
                       </div>
                     </td>
-                    <td>{stats?.served_requests ?? 0}</td>
+                    <td>{formatCountCompact(stats?.served_requests ?? 0)}</td>
                     <td>{formatNumber(stats?.average_duration_ms ?? null)} ms</td>
                     <td>{formatTimestamp(provider.last_success_at, locale)}</td>
                   </tr>

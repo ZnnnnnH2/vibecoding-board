@@ -150,6 +150,24 @@ export type MutationResponse = {
   dashboard: DashboardResponse
 }
 
+export type ProviderTokenBreakdown = {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  requests: number
+}
+
+export type TokenUsageResponse = {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  total_requests: number
+  requests_with_usage: number
+  updated_at: string | null
+  providers: Record<string, ProviderTokenBreakdown>
+  models: Record<string, ProviderTokenBreakdown>
+}
+
 export type ProviderFormState = {
   name: string
   baseUrl: string

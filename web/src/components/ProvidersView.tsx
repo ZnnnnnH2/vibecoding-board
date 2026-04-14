@@ -6,6 +6,7 @@ import type { Variants } from 'framer-motion'
 
 import {
   findProviderStats,
+  formatCountCompact,
   formatNumber,
   formatPercent,
   formatTimestamp,
@@ -257,7 +258,7 @@ export function ProvidersView({
                       </td>
                       <td>
                         <div className="table-primary">
-                          <strong>{messages.providers.requestsCount(stats?.served_requests ?? 0)}</strong>
+                          <strong>{messages.providers.requestsCount(formatCountCompact(stats?.served_requests ?? 0))}</strong>
                           <span>{formatPercent(stats?.success_rate ?? null)} {messages.providers.successSuffix}</span>
                         </div>
                       </td>

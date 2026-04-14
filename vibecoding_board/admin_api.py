@@ -153,6 +153,10 @@ def build_admin_router() -> APIRouter:
     ):
         return await request.app.state.metrics_store.metrics_payload(window=window)
 
+    @router.get("/token-usage")
+    async def token_usage(request: Request):
+        return await request.app.state.token_ledger.snapshot()
+
     @router.patch("/retry-policy")
     async def update_retry_policy(payload: RetryPolicyUpdatePayload, request: Request):
         locale = resolve_admin_locale(request)

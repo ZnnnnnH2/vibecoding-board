@@ -6,6 +6,7 @@ import type {
   MutationResponse,
   ProviderFormState,
   RetryPolicyFormState,
+  TokenUsageResponse,
 } from './types'
 import type { AppLocale } from './i18n'
 
@@ -242,5 +243,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(buildHealthcheckSettingsPayload(form)),
     })
+  },
+
+  tokenUsage(signal?: AbortSignal): Promise<TokenUsageResponse> {
+    return request<TokenUsageResponse>('/admin/api/token-usage', { signal })
   },
 }

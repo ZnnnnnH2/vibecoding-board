@@ -13,6 +13,7 @@ from vibecoding_board.admin_metrics import AdminMetricsStore
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
 from vibecoding_board.service import ProxyService, build_error_response
+from vibecoding_board.token_ledger import TokenLedger
 
 
 STATIC_ADMIN_DIR = Path(__file__).resolve().parent / "static" / "admin"
@@ -46,19 +47,24 @@ def create_app(
         request_log_store = RequestLogStore()
         metrics_store = AdminMetricsStore(config_path.parent / "data" / "metrics" / "admin_hourly.json")
         metrics_store.load()
+        token_ledger = TokenLedger(config_path.parent / "data" / "metrics" / "token_ledger.json")
+        token_ledger.load()
         await runtime_manager.initialize()
         app.state.runtime_manager = runtime_manager
         app.state.request_log_store = request_log_store
         app.state.metrics_store = metrics_store
+        app.state.token_ledger = token_ledger
         app.state.service = ProxyService(
             runtime_manager=runtime_manager,
             request_log_store=request_log_store,
             metrics_store=metrics_store,
+            token_ledger=token_ledger,
             client=client,
         )
         try:
             yield
         finally:
+            await token_ledger.close()
             await metrics_store.close()
             await client.aclose()
 

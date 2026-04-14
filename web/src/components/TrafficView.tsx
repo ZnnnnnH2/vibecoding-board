@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import type { Variants } from 'framer-motion'
 
 import {
+  formatCountCompact,
   formatTimestamp,
   getRequestStateMeta,
   requestHeadline,
@@ -212,7 +213,7 @@ export function TrafficView({ requests }: TrafficViewProps) {
                                   <span className="surface-label">{messages.traffic.usage}</span>
                                   <strong>
                                     {request.usage
-                                      ? `${request.usage.input_tokens ?? messages.app.notAvailable} / ${request.usage.output_tokens ?? messages.app.notAvailable} / ${request.usage.total_tokens ?? messages.app.notAvailable}`
+                                      ? `${formatCountCompact(request.usage.input_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.output_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.total_tokens, messages.app.notAvailable)}`
                                       : messages.traffic.noUsageFields}
                                   </strong>
                                 </div>

@@ -1,0 +1,42 @@
+{
+  "input_tokens": 162068649,
+  "output_tokens": 2057296,
+  "total_tokens": 164125945,
+  "total_requests": 12505,
+  "requests_with_usage": 11440,
+  "updated_at": "2026-04-14T01:46:20.463065+00:00",
+  "providers": {
+    "aiapis": {
+      "input_tokens": 56793038,
+      "output_tokens": 922827,
+      "total_tokens": 57715865,
+      "requests": 5933
+    },
+    "relay_asxs": {
+      "input_tokens": 105275611,
+      "output_tokens": 1134469,
+      "total_tokens": 106410080,
+      "requests": 5507
+    }
+  },
+  "models": {
+    "gpt-5.4-mini": {
+      "input_tokens": 16146617,
+      "output_tokens": 665025,
+      "total_tokens": 16811642,
+      "requests": 9712
+    },
+    "gpt-5.4": {
+      "input_tokens": 141553000,
+      "output_tokens": 1338893,
+      "total_tokens": 142891893,
+      "requests": 1657
+    },
+    "gpt-5.2": {
+      "input_tokens": 4369032,
+      "output_tokens": 53378,
+      "total_tokens": 4422410,
+      "requests": 71
+    }
+  }
+}

@@ -45,6 +45,7 @@ import type {
   ProviderFormState,
   ProviderSummary,
   RetryPolicyFormState,
+  TokenUsageResponse,
 } from './types'
 import type { LocalePreference } from './i18n'
 import type { ResolvedTheme, ThemePreference } from './theme'
@@ -138,6 +139,7 @@ function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): Hea
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null)
   const [metricsWindow, setMetricsWindow] = useState<MetricsWindow>('24h')
   const [currentView, setCurrentView] = useState<AdminView>('overview')
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | null>(null)
@@ -232,9 +234,10 @@ export default function App() {
     setLoading(true)
 
     try {
-      const [dashboardResult, metricsResult] = await Promise.allSettled([
+      const [dashboardResult, metricsResult, tokenUsageResult] = await Promise.allSettled([
         api.dashboard(controller.signal),
         api.metrics(metricsWindowRef.current, controller.signal),
+        api.tokenUsage(controller.signal),
       ])
 
       if (dashboardResult.status === 'fulfilled') {
@@ -261,6 +264,12 @@ export default function App() {
           'error',
           metricsResult.reason instanceof Error ? metricsResult.reason.message : messages.app.metricsLoadFailed,
         )
+      }
+
+      if (tokenUsageResult.status === 'fulfilled') {
+        startTransition(() => {
+          setTokenUsage(tokenUsageResult.value)
+        })
       }
     } finally {
       if (activeRequestControllerRef.current === controller) {
@@ -618,6 +627,7 @@ export default function App() {
             <OverviewView
               dashboard={dashboard}
               metrics={metrics}
+              tokenUsage={tokenUsage}
               metricsWindow={metricsWindow}
               proxyBase={proxyBase}
               loading={loading}

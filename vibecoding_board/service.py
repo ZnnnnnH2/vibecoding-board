@@ -19,6 +19,7 @@ from vibecoding_board.request_log import AttemptLogEntry, RequestLogStore
 from vibecoding_board.request_log import UsageLogEntry
 from vibecoding_board.registry import ProviderRegistry, ProviderSnapshot
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
+from vibecoding_board.token_ledger import TokenLedger
 
 
 LOGGER = logging.getLogger(__name__)
@@ -156,11 +157,13 @@ class ProxyService:
         runtime_manager: RuntimeManager,
         request_log_store: RequestLogStore,
         metrics_store: AdminMetricsStore,
+        token_ledger: TokenLedger,
         client: httpx.AsyncClient,
     ) -> None:
         self.runtime_manager = runtime_manager
         self.request_log_store = request_log_store
         self.metrics_store = metrics_store
+        self.token_ledger = token_ledger
         self.client = client
 
     async def run_provider_healthcheck(self, provider_name: str) -> dict[str, object]:
@@ -406,6 +409,7 @@ class ProxyService:
                     await registry.mark_success(provider.name)
                 await self._finalize_request(
                     log_id,
+                    model=model,
                     final_provider=provider.name,
                     final_url=url,
                     status_code=response.status_code,
@@ -429,6 +433,7 @@ class ProxyService:
 
         await self._finalize_request(
             log_id,
+            model=model,
             final_provider=None,
             final_url=None,
             status_code=503,
@@ -526,6 +531,7 @@ class ProxyService:
                     usage = self._extract_usage_from_bytes(body_bytes)
                     await self._finalize_request(
                         log_id,
+                        model=model,
                         final_provider=provider.name,
                         final_url=url,
                         status_code=response.status_code,
@@ -575,6 +581,7 @@ class ProxyService:
                         response=response,
                         first_chunk=first_chunk,
                         stream_iterator=stream_iterator,
+                        model=model,
                         log_id=log_id,
                         started_at=started_at,
                         ttfb_ms=ttfb_ms,
@@ -589,6 +596,7 @@ class ProxyService:
 
         await self._finalize_request(
             log_id,
+            model=model,
             final_provider=None,
             final_url=None,
             status_code=503,
@@ -616,6 +624,7 @@ class ProxyService:
         response: httpx.Response,
         first_chunk: bytes,
         stream_iterator: AsyncIterator[bytes],
+        model: str,
         log_id: str,
         started_at: float,
         ttfb_ms: int | None,
@@ -667,6 +676,7 @@ class ProxyService:
                 await registry.mark_success(provider.name)
             await self._finalize_request(
                 log_id,
+                model=model,
                 final_provider=provider.name,
                 final_url=final_url,
                 status_code=response.status_code,
@@ -682,6 +692,7 @@ class ProxyService:
         self,
         entry_id: str,
         *,
+        model: str | None,
         final_provider: str | None,
         final_url: str | None,
         status_code: int | None,
@@ -709,6 +720,11 @@ class ProxyService:
             state=state,
             duration_ms=duration_ms,
             ttfb_ms=ttfb_ms,
+            usage=usage,
+        )
+        await self.token_ledger.record(
+            model=model,
+            provider=final_provider,
             usage=usage,
         )
 

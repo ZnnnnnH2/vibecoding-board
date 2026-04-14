@@ -7,9 +7,8 @@ import {
   TrendingUp,
 } from 'lucide-react'
 
-import { formatTimestamp } from '../format'
+import { formatCountCompact, formatTimestamp } from '../format'
 import { useI18n } from '../i18n'
-import type { AppLocale } from '../i18n'
 
 import type {
   MetricsPoint,
@@ -23,6 +22,7 @@ type LineTrendCardProps = {
   description: string
   points: MetricsPoint[]
   latestLabel: string
+  formatLatestValue?: (value: number | null | undefined) => string
   color: string
   icon: 'requests' | 'tokens' | 'duration'
 }
@@ -115,6 +115,7 @@ export function LineTrendCard({
   description,
   points,
   latestLabel,
+  formatLatestValue,
   color,
   icon,
 }: LineTrendCardProps) {
@@ -127,7 +128,11 @@ export function LineTrendCard({
       <div className="chart-card-head">
         <div>
           <span className="surface-label">{title}</span>
-          <h3>{latest == null || latest.value == null ? latestLabel : `${latestLabel} · ${latest.value}`}</h3>
+          <h3>
+            {latest == null || latest.value == null
+              ? latestLabel
+              : `${latestLabel} · ${formatLatestValue ? formatLatestValue(latest.value) : latest.value}`}
+          </h3>
         </div>
         <div className="chart-card-icon" style={{ color }}>
           {iconForTrend(icon)}
@@ -223,7 +228,7 @@ export function DistributionBarCard({
       <div className="chart-card-head">
         <div>
           <span className="surface-label">{title}</span>
-          <h3>{total}</h3>
+          <h3>{formatCountCompact(total)}</h3>
         </div>
         <div className="chart-card-icon chart-card-icon-neutral">
           <BarChart3 size={18} />
@@ -244,7 +249,7 @@ export function DistributionBarCard({
               <div key={item.provider_name} className="bar-list-item">
                 <div className="bar-list-head">
                   <strong>{item.provider_name}</strong>
-                  <span>{item.requests} req · {item.total_tokens} tok</span>
+                  <span>{formatCountCompact(item.requests)} req · {formatCountCompact(item.total_tokens)} tok</span>
                 </div>
                 <div className="bar-track">
                   <div className="bar-fill" style={{ width: `${width}%` }} />
@@ -284,7 +289,7 @@ export function DonutCard({
       <div className="chart-card-head">
         <div>
           <span className="surface-label">{title}</span>
-          <h3>{total}</h3>
+          <h3>{formatCountCompact(total)}</h3>
         </div>
         <div className="chart-card-icon chart-card-icon-neutral">
           <CircleDashed size={18} />
@@ -312,7 +317,7 @@ export function DonutCard({
               />
           ))}
           <text x="50" y="47" textAnchor="middle" className="donut-total-label">
-            {total}
+            {formatCountCompact(total)}
           </text>
           <text x="50" y="59" textAnchor="middle" className="donut-total-caption">
             {messages.overview.totalLabel}
@@ -325,7 +330,7 @@ export function DonutCard({
               <span className="legend-swatch" style={{ background: item.color }} />
               <div>
                 <strong>{item.label}</strong>
-                <span>{item.count}</span>
+                <span>{formatCountCompact(item.count)}</span>
               </div>
             </div>
           ))}
