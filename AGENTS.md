@@ -28,3 +28,8 @@ The current history uses lowercase Conventional Commit style, for example `docs:
 
 ## Security & Configuration Tips
 Do not commit real API keys in `config.yaml`; prefer environment-backed values and keep `config.example.yaml` sanitized. When changing frontend code, rebuild the admin bundle so the served assets and source stay in sync.
+
+## Task Scope Memory
+Current product scope is the OpenAI-compatible local proxy and admin console.
+Focus on routing, failover, provider management, healthchecks, metrics, and admin UX for OpenAI-compatible upstream providers.
+Do not introduce Claude/Anthropic compatibility layers or Claude-to-OpenAI bridge work unless the user explicitly asks for it.

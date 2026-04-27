@@ -32,7 +32,7 @@ import {
 } from '../format'
 import { useI18n } from '../i18n'
 
-import type { DashboardResponse, MetricsResponse, MetricsWindow, TokenUsageResponse } from '../types'
+import type { DashboardResponse, MetricsResponse, MetricsWindow, TokenUsageResponse, TrafficPreset } from '../types'
 
 
 type OverviewViewProps = {
@@ -43,7 +43,7 @@ type OverviewViewProps = {
   proxyBase: string
   loading: boolean
   onMetricsWindowChange: (window: MetricsWindow) => void
-  onNavigate: (view: 'providers' | 'traffic') => void
+  onNavigate: (view: 'providers' | 'traffic', trafficPreset?: TrafficPreset) => void
 }
 
 const containerVariants: Variants = {
@@ -337,6 +337,15 @@ export function OverviewView({
               color="#8b5cf6"
               icon="duration"
             />
+            <LineTrendCard
+              title={messages.overview.failoverTrendTitle}
+              description={messages.overview.failoverTrendCopy}
+              points={metrics.timeseries.failover_requests}
+              latestLabel={messages.overview.latestFailovers}
+              formatLatestValue={formatCountCompact}
+              color="#f97316"
+              icon="requests"
+            />
             <DualTrendCard
               title={messages.overview.reliabilityTrendTitle}
               description={messages.overview.reliabilityTrendCopy}
@@ -423,7 +432,12 @@ export function OverviewView({
                     key={request.id}
                     type="button"
                     className="compact-row"
-                    onClick={() => onNavigate('traffic')}
+                    onClick={() => onNavigate('traffic', {
+                      requestId: request.id,
+                      state: request.state,
+                      kind: request.request_kind === 'response' ? 'response' : 'chat',
+                      search: request.model,
+                    })}
                   >
                     <div>
                       <strong>{requestHeadline(request, messages)}</strong>

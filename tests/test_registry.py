@@ -14,6 +14,7 @@ def make_provider(
     priority: int,
     models: list[str],
     always_alive: bool = False,
+    supports_responses_websocket: bool = False,
 ) -> RuntimeProvider:
     return RuntimeProvider(
         name=name,
@@ -24,6 +25,7 @@ def make_provider(
         priority=priority,
         models=tuple(models),
         healthcheck_model=None,
+        supports_responses_websocket=supports_responses_websocket,
         timeout_seconds=10,
         max_failures=2,
         cooldown_seconds=30,
@@ -121,3 +123,60 @@ async def test_registry_reapplies_future_cooldown_after_always_alive_is_removed(
 
     assert final_state.consecutive_failures == 3
     assert final_state.cooldown_until is not None
+
+
+@pytest.mark.anyio
+async def test_registry_marks_and_clears_ws_unsupported_state() -> None:
+    registry = ProviderRegistry(
+        [
+            make_provider(
+                "relay_a",
+                priority=10,
+                models=["gpt-4.1"],
+                supports_responses_websocket=True,
+            )
+        ]
+    )
+
+    initial = await registry.get_state("relay_a")
+    assert initial.supports_responses_websocket is True
+    assert initial.ws_unsupported is False
+
+    await registry.mark_ws_unsupported("relay_a")
+    marked = await registry.get_state("relay_a")
+    assert marked.ws_unsupported is True
+
+    await registry.clear_ws_unsupported("relay_a")
+    cleared = await registry.get_state("relay_a")
+    assert cleared.ws_unsupported is False
+
+
+@pytest.mark.anyio
+async def test_registry_preserves_ws_unsupported_state_on_import() -> None:
+    registry = ProviderRegistry(
+        [
+            make_provider(
+                "relay_a",
+                priority=10,
+                models=["gpt-4.1"],
+                supports_responses_websocket=True,
+            )
+        ]
+    )
+    await registry.mark_ws_unsupported("relay_a")
+
+    updated_registry = ProviderRegistry(
+        [
+            make_provider(
+                "relay_a",
+                priority=10,
+                models=["gpt-4.1"],
+                supports_responses_websocket=True,
+            )
+        ]
+    )
+    await updated_registry.import_states(await registry.list_states())
+
+    imported = await updated_registry.get_state("relay_a")
+    assert imported.supports_responses_websocket is True
+    assert imported.ws_unsupported is True

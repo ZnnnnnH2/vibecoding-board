@@ -5,6 +5,7 @@ import type {
   MetricsWindow,
   MutationResponse,
   ProviderFormState,
+  ResponsesWebSocketSettingsFormState,
   RetryPolicyFormState,
   TokenUsageResponse,
 } from './types'
@@ -123,6 +124,7 @@ function buildProviderPayload(form: ProviderFormState) {
     priority: Number.isNaN(priority) ? 10 : priority,
     models,
     healthcheck_model: form.healthcheckModel.trim() || null,
+    supports_responses_websocket: form.supportsResponsesWebsocket,
     timeout_seconds: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : 60,
     max_failures: Number.isFinite(maxFailures) && maxFailures >= 1 ? maxFailures : 3,
     cooldown_seconds: Number.isFinite(cooldownSeconds) && cooldownSeconds >= 0 ? cooldownSeconds : 30,
@@ -163,6 +165,13 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
 function buildHealthcheckSettingsPayload(form: HealthcheckSettingsFormState) {
   return {
     stream: form.stream,
+  }
+}
+
+
+function buildResponsesWebSocketSettingsPayload(form: ResponsesWebSocketSettingsFormState) {
+  return {
+    enabled: form.enabled,
   }
 }
 
@@ -242,6 +251,15 @@ export const api = {
     return request<MutationResponse>('/admin/api/healthcheck-settings', {
       method: 'PATCH',
       body: JSON.stringify(buildHealthcheckSettingsPayload(form)),
+    })
+  },
+
+  updateResponsesWebSocketSettings(
+    form: ResponsesWebSocketSettingsFormState,
+  ): Promise<MutationResponse> {
+    return request<MutationResponse>('/admin/api/responses-websocket-settings', {
+      method: 'PATCH',
+      body: JSON.stringify(buildResponsesWebSocketSettingsPayload(form)),
     })
   },
 

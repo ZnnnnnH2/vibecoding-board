@@ -11,6 +11,7 @@ from vibecoding_board.config import (
     HealthcheckConfig,
     ProviderConfig,
     ProxyConfig,
+    ResponsesWebSocketConfig,
     RetryPolicyConfig,
 )
 from vibecoding_board.config_store import ConfigStore
@@ -77,6 +78,7 @@ class RuntimeManager:
             "reloaded_at": runtime.reloaded_at,
             "retry_policy": runtime.config.retry_policy.model_dump(mode="python"),
             "healthcheck": runtime.config.healthcheck.model_dump(mode="python"),
+            "responses_websocket": runtime.config.responses_websocket.model_dump(mode="python"),
             "providers": [
                 self._provider_to_public_dict(provider, healthchecks[provider.name])
                 for provider in providers
@@ -111,12 +113,7 @@ class RuntimeManager:
             config = self.current().config.model_copy(deep=True)
             providers = list(config.providers)
             providers.append(provider)
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def update_provider(
@@ -140,12 +137,7 @@ class RuntimeManager:
                 }
             )
             providers[index] = replacement
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             new_name = replacement.name
             renamed = new_name != current_name
             name_mapping = {new_name: current_name} if renamed else None
@@ -164,12 +156,7 @@ class RuntimeManager:
             providers = list(config.providers)
             index = self._find_provider_index(providers, provider_name)
             providers[index] = providers[index].model_copy(update={"priority": priority})
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def toggle_provider(self, provider_name: str) -> RuntimeSnapshot:
@@ -179,12 +166,7 @@ class RuntimeManager:
             index = self._find_provider_index(providers, provider_name)
             current = providers[index]
             providers[index] = current.model_copy(update={"enabled": not current.enabled})
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def toggle_provider_always_alive(self, provider_name: str) -> RuntimeSnapshot:
@@ -194,12 +176,7 @@ class RuntimeManager:
             index = self._find_provider_index(providers, provider_name)
             current = providers[index]
             providers[index] = current.model_copy(update={"always_alive": not current.always_alive})
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def promote_provider(self, provider_name: str) -> RuntimeSnapshot:
@@ -210,12 +187,7 @@ class RuntimeManager:
             current_min = min(provider.priority for provider in providers)
             promoted = providers[index]
             providers[index] = promoted.model_copy(update={"priority": current_min - PRIORITY_STEP})
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def delete_provider(self, provider_name: str) -> RuntimeSnapshot:
@@ -226,35 +198,65 @@ class RuntimeManager:
                 raise RuntimeMutationError("At least one provider must remain configured.")
             index = self._find_provider_index(providers, provider_name)
             providers.pop(index)
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=providers,
-            )
+            updated = self._compose_config(config, providers=providers)
             return await self._persist_and_activate(updated)
 
     async def update_retry_policy(self, retry_policy: RetryPolicyConfig) -> RuntimeSnapshot:
         async with self._mutation_lock:
             config = self.current().config.model_copy(deep=True)
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=retry_policy,
-                healthcheck=config.healthcheck.model_copy(deep=True),
-                providers=[provider.model_copy(deep=True) for provider in config.providers],
-            )
+            updated = self._compose_config(config, retry_policy=retry_policy)
             return await self._persist_and_activate(updated)
 
     async def update_healthcheck(self, healthcheck: HealthcheckConfig) -> RuntimeSnapshot:
         async with self._mutation_lock:
             config = self.current().config.model_copy(deep=True)
-            updated = ProxyConfig(
-                listen=config.listen.model_copy(deep=True),
-                retry_policy=config.retry_policy.model_copy(deep=True),
-                healthcheck=healthcheck,
-                providers=[provider.model_copy(deep=True) for provider in config.providers],
+            updated = self._compose_config(config, healthcheck=healthcheck)
+            return await self._persist_and_activate(updated)
+
+    async def update_responses_websocket(
+        self,
+        responses_websocket: ResponsesWebSocketConfig,
+    ) -> RuntimeSnapshot:
+        async with self._mutation_lock:
+            config = self.current().config.model_copy(deep=True)
+            updated = self._compose_config(
+                config,
+                responses_websocket=responses_websocket,
             )
             return await self._persist_and_activate(updated)
+
+    @staticmethod
+    def _compose_config(
+        source: ProxyConfig,
+        *,
+        retry_policy: RetryPolicyConfig | None = None,
+        healthcheck: HealthcheckConfig | None = None,
+        responses_websocket: ResponsesWebSocketConfig | None = None,
+        providers: list[ProviderConfig] | None = None,
+    ) -> ProxyConfig:
+        return ProxyConfig(
+            listen=source.listen.model_copy(deep=True),
+            retry_policy=(
+                retry_policy
+                if retry_policy is not None
+                else source.retry_policy.model_copy(deep=True)
+            ),
+            healthcheck=(
+                healthcheck
+                if healthcheck is not None
+                else source.healthcheck.model_copy(deep=True)
+            ),
+            responses_websocket=(
+                responses_websocket
+                if responses_websocket is not None
+                else source.responses_websocket.model_copy(deep=True)
+            ),
+            providers=(
+                providers
+                if providers is not None
+                else [provider.model_copy(deep=True) for provider in source.providers]
+            ),
+        )
 
     async def _persist_and_activate(
         self,
@@ -343,11 +345,13 @@ class RuntimeManager:
             "models": list(provider.models),
             "supports_all_models": provider.supports_all_models,
             "healthcheck_model": provider.healthcheck_model,
+            "supports_responses_websocket": provider.supports_responses_websocket,
             "consecutive_failures": provider.consecutive_failures,
             "cooldown_until": provider.cooldown_until,
             "last_error": provider.last_error,
             "last_failure_at": provider.last_failure_at,
             "last_success_at": provider.last_success_at,
+            "ws_unsupported": provider.ws_unsupported,
             "has_api_key": bool(provider.api_key),
             "healthcheck": {
                 "checked_at": healthcheck.checked_at,

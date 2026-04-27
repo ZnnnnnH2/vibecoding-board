@@ -1,22 +1,31 @@
-import { Save, ShieldAlert } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 import type { Variants } from 'framer-motion'
 
 import { useI18n } from '../i18n'
 
-import type { HealthcheckSettingsFormState, RetryPolicyFormState } from '../types'
+import type {
+  HealthcheckSettingsFormState,
+  ResponsesWebSocketSettingsFormState,
+  RetryPolicyFormState,
+} from '../types'
 
 
 type SettingsViewProps = {
+  settingsBusy: boolean
   retryPolicyForm: RetryPolicyFormState
   retryPolicyBusy: boolean
   onRetryPolicyChange: (form: RetryPolicyFormState) => void
-  onRetryPolicySubmit: () => void
+  onRetryPolicySubmit: (form: RetryPolicyFormState) => void
   healthcheckForm: HealthcheckSettingsFormState
   healthcheckBusy: boolean
   onHealthcheckChange: (form: HealthcheckSettingsFormState) => void
-  onHealthcheckSubmit: () => void
+  onHealthcheckSubmit: (form: HealthcheckSettingsFormState) => void
+  responsesWebSocketForm: ResponsesWebSocketSettingsFormState
+  responsesWebSocketBusy: boolean
+  onResponsesWebSocketChange: (form: ResponsesWebSocketSettingsFormState) => void
+  onResponsesWebSocketSubmit: (form: ResponsesWebSocketSettingsFormState) => void
 }
 
 const containerVariants: Variants = {
@@ -47,6 +56,7 @@ const itemVariants: Variants = {
 }
 
 export function SettingsView({
+  settingsBusy,
   retryPolicyForm,
   retryPolicyBusy,
   onRetryPolicyChange,
@@ -55,6 +65,10 @@ export function SettingsView({
   healthcheckBusy,
   onHealthcheckChange,
   onHealthcheckSubmit,
+  responsesWebSocketForm,
+  responsesWebSocketBusy,
+  onResponsesWebSocketChange,
+  onResponsesWebSocketSubmit,
 }: SettingsViewProps) {
   const { messages } = useI18n()
 
@@ -66,6 +80,36 @@ export function SettingsView({
       ...retryPolicyForm,
       [key]: value,
     })
+  }
+
+  function commitRetryPolicy<K extends keyof RetryPolicyFormState>(
+    key: K,
+    value: RetryPolicyFormState[K],
+  ) {
+    const nextForm = {
+      ...retryPolicyForm,
+      [key]: value,
+    }
+    onRetryPolicyChange(nextForm)
+    onRetryPolicySubmit(nextForm)
+  }
+
+  function commitHealthcheckSettings(stream: boolean) {
+    const nextForm = {
+      ...healthcheckForm,
+      stream,
+    }
+    onHealthcheckChange(nextForm)
+    onHealthcheckSubmit(nextForm)
+  }
+
+  function commitResponsesWebSocketSettings(enabled: boolean) {
+    const nextForm = {
+      ...responsesWebSocketForm,
+      enabled,
+    }
+    onResponsesWebSocketChange(nextForm)
+    onResponsesWebSocketSubmit(nextForm)
   }
 
   return (
@@ -93,17 +137,9 @@ export function SettingsView({
                   <h3>{messages.settings.policyTitle}</h3>
                   <p>{messages.settings.policyCopy}</p>
                 </div>
-                <button
-                  type="button"
-                  className="accent-button"
-                  onClick={onRetryPolicySubmit}
-                  disabled={retryPolicyBusy}
-                >
-                  <Save size={16} />
-                  {retryPolicyBusy
-                    ? messages.settings.savingRetryPolicy
-                    : messages.settings.saveRetryPolicy}
-                </button>
+                <span className="section-caption">
+                  {retryPolicyBusy ? messages.settings.savingRetryPolicy : messages.settings.blurToApply}
+                </span>
               </div>
 
               <div className="settings-grid">
@@ -113,7 +149,11 @@ export function SettingsView({
                     rows={4}
                     value={retryPolicyForm.retryableStatusCodes}
                     onChange={(event) => updateRetryPolicy('retryableStatusCodes', event.target.value)}
+                    onBlur={(event) =>
+                      commitRetryPolicy('retryableStatusCodes', event.currentTarget.value)
+                    }
                     placeholder={messages.settings.retryableStatusCodesPlaceholder}
+                    disabled={settingsBusy}
                   />
                   <small className="field-hint">{messages.settings.retryableStatusCodesHint}</small>
                 </label>
@@ -126,6 +166,10 @@ export function SettingsView({
                     step="1"
                     value={retryPolicyForm.sameProviderRetryCount}
                     onChange={(event) => updateRetryPolicy('sameProviderRetryCount', event.target.value)}
+                    onBlur={(event) =>
+                      commitRetryPolicy('sameProviderRetryCount', event.currentTarget.value)
+                    }
+                    disabled={settingsBusy}
                   />
                   <small className="field-hint">{messages.settings.sameProviderRetryCountHint}</small>
                 </label>
@@ -138,9 +182,50 @@ export function SettingsView({
                     step="1"
                     value={retryPolicyForm.retryIntervalMs}
                     onChange={(event) => updateRetryPolicy('retryIntervalMs', event.target.value)}
+                    onBlur={(event) =>
+                      commitRetryPolicy('retryIntervalMs', event.currentTarget.value)
+                    }
+                    disabled={settingsBusy}
                   />
                   <small className="field-hint">{messages.settings.retryIntervalMsHint}</small>
                 </label>
+              </div>
+            </section>
+
+            <section className="settings-section">
+              <div className="section-header">
+                <div>
+                  <span className="eyebrow">{messages.settings.responsesWebSocketEyebrow}</span>
+                  <h3>{messages.settings.responsesWebSocketTitle}</h3>
+                  <p>{messages.settings.responsesWebSocketCopy}</p>
+                </div>
+                <span className="section-caption">
+                  {responsesWebSocketBusy
+                    ? messages.settings.savingResponsesWebSocket
+                    : messages.settings.blurToApply}
+                </span>
+              </div>
+
+              <div className="form-hint-panel">
+                <span className="meta-label">{messages.settings.responsesWebSocketLabel}</span>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={responsesWebSocketForm.enabled}
+                    disabled={settingsBusy}
+                    onChange={(event) =>
+                      onResponsesWebSocketChange({
+                        ...responsesWebSocketForm,
+                        enabled: event.target.checked,
+                      })
+                    }
+                    onBlur={(event) =>
+                      commitResponsesWebSocketSettings(event.currentTarget.checked)
+                    }
+                  />
+                  <span>{messages.settings.responsesWebSocketEnabled}</span>
+                </label>
+                <p>{messages.settings.responsesWebSocketHint}</p>
               </div>
             </section>
 
@@ -151,17 +236,9 @@ export function SettingsView({
                   <h3>{messages.settings.healthcheckTitle}</h3>
                   <p>{messages.settings.healthcheckCopy}</p>
                 </div>
-                <button
-                  type="button"
-                  className="accent-button"
-                  onClick={onHealthcheckSubmit}
-                  disabled={healthcheckBusy}
-                >
-                  <Save size={16} />
-                  {healthcheckBusy
-                    ? messages.settings.savingHealthcheck
-                    : messages.settings.saveHealthcheck}
-                </button>
+                <span className="section-caption">
+                  {healthcheckBusy ? messages.settings.savingHealthcheck : messages.settings.blurToApply}
+                </span>
               </div>
 
               <div className="form-hint-panel">
@@ -170,12 +247,14 @@ export function SettingsView({
                   <input
                     type="checkbox"
                     checked={healthcheckForm.stream}
+                    disabled={settingsBusy}
                     onChange={(event) =>
                       onHealthcheckChange({
                         ...healthcheckForm,
                         stream: event.target.checked,
                       })
                     }
+                    onBlur={(event) => commitHealthcheckSettings(event.currentTarget.checked)}
                   />
                   <span>{messages.settings.healthcheckStreamEnabled}</span>
                 </label>

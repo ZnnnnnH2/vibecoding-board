@@ -32,7 +32,7 @@ export type RecentRequest = {
   attempts: RequestAttempt[]
 }
 
-export type RequestState = 'pending' | 'success' | 'interrupted' | 'error'
+export type RequestState = 'pending' | 'success' | 'interrupted' | 'error' | 'stale'
 
 export type HealthcheckSummary = {
   checked_at: string | null
@@ -48,6 +48,10 @@ export type HealthcheckConfigSummary = {
   stream: boolean
 }
 
+export type ResponsesWebSocketConfigSummary = {
+  enabled: boolean
+}
+
 export type ProviderSummary = {
   name: string
   base_url: string
@@ -60,6 +64,7 @@ export type ProviderSummary = {
   models: string[]
   supports_all_models: boolean
   healthcheck_model: string | null
+  supports_responses_websocket: boolean
   consecutive_failures: number
   cooldown_until: string | null
   last_error: string | null
@@ -90,6 +95,7 @@ export type DashboardResponse = {
   reloaded_at: string
   retry_policy: RetryPolicySummary
   healthcheck: HealthcheckConfigSummary
+  responses_websocket: ResponsesWebSocketConfigSummary
   providers: ProviderSummary[]
   recent_requests: RecentRequest[]
   stats: {
@@ -118,7 +124,7 @@ export type ProviderBreakdown = {
 }
 
 export type StateBreakdown = {
-  state: 'success' | 'interrupted' | 'error'
+  state: Exclude<RequestState, 'pending'>
   count: number
 }
 
@@ -129,6 +135,10 @@ export type MetricsResponse = {
   summary: {
     requests: number
     total_tokens: number
+    failover_requests: number
+    failover_next_provider_count: number
+    retry_same_provider_count: number
+    retryable_error_count: number
     average_duration_ms: number | null
     success_rate: number | null
   }
@@ -138,12 +148,26 @@ export type MetricsResponse = {
     duration_ms: MetricsPoint[]
     success_rate: MetricsPoint[]
     average_ttfb_ms: MetricsPoint[]
+    failover_requests: MetricsPoint[]
   }
   breakdowns: {
     providers: ProviderBreakdown[]
     states: StateBreakdown[]
+    next_actions: Array<{
+      next_action: 'failover_next_provider' | 'retry_same_provider'
+      count: number
+    }>
   }
 }
+
+export type TrafficPreset = {
+  requestId?: string
+  state?: RequestState | 'all'
+  kind?: RequestKindFilter
+  search?: string
+}
+
+export type RequestKindFilter = 'all' | 'chat' | 'response'
 
 export type MutationResponse = {
   message: string
@@ -178,6 +202,7 @@ export type ProviderFormState = {
   modelMode: 'all' | 'explicit'
   modelText: string
   healthcheckModel: string
+  supportsResponsesWebsocket: boolean
   timeoutSeconds: string
   maxFailures: string
   cooldownSeconds: string
@@ -191,4 +216,8 @@ export type RetryPolicyFormState = {
 
 export type HealthcheckSettingsFormState = {
   stream: boolean
+}
+
+export type ResponsesWebSocketSettingsFormState = {
+  enabled: boolean
 }

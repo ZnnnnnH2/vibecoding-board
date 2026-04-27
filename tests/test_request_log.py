@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from vibecoding_board.request_log import AttemptLogEntry, RequestLogStore, UsageLogEntry
@@ -125,3 +127,95 @@ async def test_aggregated_stats_ignore_pending_requests() -> None:
 
     entries = await store.list_entries()
     assert any(entry["id"] == pending and entry["state"] == "pending" for entry in entries)
+
+
+@pytest.mark.anyio
+async def test_pending_request_becomes_stale_after_inactivity() -> None:
+    store = RequestLogStore(stale_after_seconds=1, prune_after_seconds=10)
+
+    entry_id = await store.begin(
+        endpoint="/v1/responses",
+        request_kind="response",
+        model="gpt-4.1",
+        stream=True,
+    )
+    entry = (await store.list_entries())[0]
+    stale_at = entry["created_at"] + timedelta(seconds=2)
+
+    entries = await store.list_entries(now=stale_at)
+
+    assert entries[0]["id"] == entry_id
+    assert entries[0]["state"] == "stale"
+    assert entries[0]["duration_ms"] >= 2000
+    assert "No request activity" in entries[0]["error"]
+
+
+@pytest.mark.anyio
+async def test_touch_keeps_pending_request_active_until_it_goes_idle() -> None:
+    store = RequestLogStore(stale_after_seconds=2, prune_after_seconds=10)
+
+    entry_id = await store.begin(
+        endpoint="/v1/responses",
+        request_kind="response",
+        model="gpt-4.1",
+        stream=True,
+    )
+    entry = (await store.list_entries())[0]
+    touched_at = entry["created_at"] + timedelta(seconds=3)
+    await store.touch(entry_id, at=touched_at)
+
+    active_entries = await store.list_entries(now=touched_at + timedelta(seconds=1))
+    stale_entries = await store.list_entries(now=touched_at + timedelta(seconds=3))
+
+    assert active_entries[0]["state"] == "pending"
+    assert stale_entries[0]["state"] == "stale"
+
+
+@pytest.mark.anyio
+async def test_stale_request_can_still_complete_with_real_outcome() -> None:
+    store = RequestLogStore(stale_after_seconds=1, prune_after_seconds=10)
+
+    entry_id = await store.begin(
+        endpoint="/v1/responses",
+        request_kind="response",
+        model="gpt-4.1",
+        stream=True,
+    )
+    entry = (await store.list_entries())[0]
+    stale_entries = await store.list_entries(now=entry["created_at"] + timedelta(seconds=2))
+    assert stale_entries[0]["state"] == "stale"
+
+    await store.complete(
+        entry_id,
+        final_provider="relay_a",
+        final_url="https://relay-a.example.com/v1/responses",
+        status_code=200,
+        duration_ms=2500,
+        ttfb_ms=200,
+        state="success",
+        error=None,
+        usage=None,
+        attempts=[],
+    )
+
+    entries = await store.list_entries()
+    assert entries[0]["id"] == entry_id
+    assert entries[0]["state"] == "success"
+    assert entries[0]["duration_ms"] == 2500
+
+
+@pytest.mark.anyio
+async def test_expired_stale_request_is_pruned_from_pending_entries() -> None:
+    store = RequestLogStore(stale_after_seconds=1, prune_after_seconds=2)
+
+    await store.begin(
+        endpoint="/v1/responses",
+        request_kind="response",
+        model="gpt-4.1",
+        stream=True,
+    )
+    entry = (await store.list_entries())[0]
+
+    entries = await store.list_entries(now=entry["created_at"] + timedelta(seconds=3))
+
+    assert entries == []

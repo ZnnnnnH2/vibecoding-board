@@ -209,6 +209,33 @@ a {
   gap: 0.7rem;
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.brand-mark {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  filter: drop-shadow(0 12px 24px rgba(15, 23, 42, 0.24));
+}
+
+.brand-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.brand-copy h2 {
+  font-size: 1.4rem;
+}
+
+.brand-copy .eyebrow {
+  line-height: 1;
+}
+
 .sidebar-brand .eyebrow {
   color: var(--sidebar-muted);
 }

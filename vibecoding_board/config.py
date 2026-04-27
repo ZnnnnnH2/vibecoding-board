@@ -28,6 +28,7 @@ class RuntimeProvider:
     priority: int
     models: tuple[str, ...]
     healthcheck_model: str | None
+    supports_responses_websocket: bool
     timeout_seconds: float
     max_failures: int
     cooldown_seconds: float
@@ -83,6 +84,12 @@ class HealthcheckConfig(BaseModel):
     stream: bool = False
 
 
+class ResponsesWebSocketConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -94,6 +101,7 @@ class ProviderConfig(BaseModel):
     priority: int = 100
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
+    supports_responses_websocket: bool = False
     timeout_seconds: float = Field(default=60.0, gt=0)
     max_failures: int = Field(default=3, ge=1)
     cooldown_seconds: float = Field(default=30.0, ge=0)
@@ -171,6 +179,7 @@ class ProviderConfig(BaseModel):
             priority=self.priority,
             models=tuple(self.models),
             healthcheck_model=self.healthcheck_model,
+            supports_responses_websocket=self.supports_responses_websocket,
             timeout_seconds=self.timeout_seconds,
             max_failures=self.max_failures,
             cooldown_seconds=self.cooldown_seconds,
@@ -183,6 +192,9 @@ class ProxyConfig(BaseModel):
     listen: ListenConfig = Field(default_factory=ListenConfig)
     retry_policy: RetryPolicyConfig = Field(default_factory=RetryPolicyConfig)
     healthcheck: HealthcheckConfig = Field(default_factory=HealthcheckConfig)
+    responses_websocket: ResponsesWebSocketConfig = Field(
+        default_factory=ResponsesWebSocketConfig
+    )
     providers: list[ProviderConfig] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -263,6 +275,9 @@ def dump_example_config() -> dict[str, Any]:
         "healthcheck": {
             "stream": False,
         },
+        "responses_websocket": {
+            "enabled": False,
+        },
         "providers": [
             {
                 "name": "relay_a",
@@ -272,6 +287,7 @@ def dump_example_config() -> dict[str, Any]:
                 "always_alive": False,
                 "priority": 10,
                 "models": ["gpt-4.1", "gpt-4o-mini"],
+                "supports_responses_websocket": False,
                 "timeout_seconds": 60,
                 "max_failures": 3,
                 "cooldown_seconds": 30,
@@ -285,6 +301,7 @@ def dump_example_config() -> dict[str, Any]:
                 "priority": 20,
                 "models": ["*"],
                 "healthcheck_model": "gpt-4o-mini",
+                "supports_responses_websocket": False,
                 "timeout_seconds": 60,
                 "max_failures": 3,
                 "cooldown_seconds": 30,

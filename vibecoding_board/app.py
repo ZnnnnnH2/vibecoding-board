@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -61,9 +61,11 @@ def create_app(
             token_ledger=token_ledger,
             client=client,
         )
+        await app.state.service.start()
         try:
             yield
         finally:
+            await app.state.service.close()
             await token_ledger.close()
             await metrics_store.close()
             await client.aclose()
@@ -83,6 +85,10 @@ def create_app(
     @app.post("/v1/responses")
     async def responses(request: Request):
         return await app.state.service.proxy_post("/v1/responses", request)
+
+    @app.websocket("/v1/responses")
+    async def responses_websocket(websocket: WebSocket):
+        await app.state.service.proxy_responses_websocket(websocket)
 
     @app.get("/v1/models")
     async def list_models():

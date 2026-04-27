@@ -10,3 +10,7 @@ test-workspaces/
 web/node_modules/
 web/.npm-cache/
 config.yaml
+data/metrics/
+data/**/*.jsonl
+.claude/
+data/traces/

@@ -1,4 +1,4 @@
-import { Fragment, useDeferredValue, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -14,14 +14,36 @@ import { useI18n } from '../i18n'
 
 import { DropdownSelect } from './DropdownSelect'
 
-import type { RecentRequest } from '../types'
+import type { RecentRequest, RequestKindFilter, RequestState, TrafficPreset } from '../types'
 
 
-type RequestStateFilter = 'all' | 'pending' | 'success' | 'error' | 'interrupted'
-type RequestKindFilter = 'all' | 'chat' | 'response'
+type RequestStateFilter = 'all' | RequestState
+type RowLimit = 10 | 50
 
 type TrafficViewProps = {
   requests: RecentRequest[]
+  preset: TrafficPreset | null
+}
+
+const DEFAULT_ROW_LIMIT: RowLimit = 10
+const ROW_LIMIT_STORAGE_KEY = 'vibecoding-board:traffic-row-limit'
+
+function isRowLimit(value: number): value is RowLimit {
+  return value === 10 || value === 50
+}
+
+function readStoredRowLimit(): RowLimit {
+  if (typeof window === 'undefined') {
+    return DEFAULT_ROW_LIMIT
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(ROW_LIMIT_STORAGE_KEY)
+    const parsedValue = Number(storedValue)
+    return isRowLimit(parsedValue) ? parsedValue : DEFAULT_ROW_LIMIT
+  } catch {
+    return DEFAULT_ROW_LIMIT
+  }
 }
 
 const containerVariants: Variants = {
@@ -51,14 +73,39 @@ const itemVariants: Variants = {
   },
 }
 
-export function TrafficView({ requests }: TrafficViewProps) {
+export function TrafficView({ requests, preset }: TrafficViewProps) {
   const { locale, messages } = useI18n()
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<RequestStateFilter>('all')
   const [kindFilter, setKindFilter] = useState<RequestKindFilter>('all')
-  const [rowLimit, setRowLimit] = useState<10 | 50>(10)
+  const [rowLimit, setRowLimit] = useState<RowLimit>(() => readStoredRowLimit())
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
   const deferredSearch = useDeferredValue(search)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(ROW_LIMIT_STORAGE_KEY, String(rowLimit))
+    } catch {
+      return
+    }
+  }, [rowLimit])
+
+  useEffect(() => {
+    if (preset === null) {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      setSearch(preset.search ?? '')
+      setStateFilter((preset.state ?? 'all') as RequestStateFilter)
+      setKindFilter(preset.kind ?? 'all')
+      setExpandedRequestId(preset.requestId ?? null)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [preset])
 
   const filteredRequests = requests.filter((request) => {
     const query = deferredSearch.trim().toLowerCase()
@@ -125,12 +172,13 @@ export function TrafficView({ requests }: TrafficViewProps) {
               { value: 'success', label: messages.traffic.success },
               { value: 'error', label: messages.traffic.failed },
               { value: 'interrupted', label: messages.traffic.interrupted },
+              { value: 'stale', label: messages.traffic.stale },
             ]}
           />
 
           <DropdownSelect
             value={rowLimit}
-            onChange={(val) => setRowLimit(val as 10 | 50)}
+            onChange={setRowLimit}
             options={[
               { value: 10, label: messages.traffic.first10 },
               { value: 50, label: messages.traffic.first50 },

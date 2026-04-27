@@ -27,6 +27,7 @@ def build_config() -> ProxyConfig:
                     "enabled": True,
                     "priority": 10,
                     "models": ["gpt-4.1"],
+                    "supports_responses_websocket": True,
                     "timeout_seconds": 10,
                     "max_failures": 2,
                     "cooldown_seconds": 30,
@@ -157,15 +158,23 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
             "/v1/chat/completions",
             json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hi"}]},
         )
+        app.state.runtime_manager.current().registry._states["relay_a"].ws_unsupported = True
         response = client.get("/admin/api/dashboard")
 
         assert response.status_code == 200
         payload = response.json()
+        relay_a = next(provider for provider in payload["providers"] if provider["name"] == "relay_a")
         assert payload["primary_provider"] == "relay_a"
         assert all("api_key" not in provider for provider in payload["providers"])
         assert all(provider["has_api_key"] is True for provider in payload["providers"])
+        assert relay_a["supports_responses_websocket"] is True
+        assert relay_a["ws_unsupported"] is True
         assert payload["recent_requests"][0]["final_provider"] == "relay_a"
         assert payload["recent_requests"][0]["final_url"] == "https://relay-a.example.com/v1/chat/completions"
+        assert payload["recent_requests"][0]["northbound_transport"] == "http"
+        assert payload["recent_requests"][0]["southbound_transport"] == "http"
+        assert payload["recent_requests"][0]["sticky_provider"] is None
+        assert payload["recent_requests"][0]["fallback_reason"] is None
         assert payload["recent_requests"][0]["usage"]["total_tokens"] == 9
         assert payload["recent_requests"][0]["ttfb_ms"] is not None
         assert payload["stats"]["providers"][0]["provider_name"] == "relay_a"
@@ -176,6 +185,7 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["retry_policy"]["same_provider_retry_count"] == 0
         assert payload["retry_policy"]["retry_interval_ms"] == 0
         assert payload["healthcheck"]["stream"] is False
+        assert payload["responses_websocket"]["enabled"] is False
         assert all(provider["always_alive"] is False for provider in payload["providers"])
 
 
@@ -228,9 +238,17 @@ def test_dashboard_primary_provider_stays_config_preferred_during_cooldown(works
         payload = client.get("/admin/api/dashboard").json()
 
     relay_a = next(provider for provider in payload["providers"] if provider["name"] == "relay_a")
+    request_entry = payload["recent_requests"][0]
     assert payload["primary_provider"] == "relay_a"
     assert relay_a["consecutive_failures"] == 2
     assert relay_a["cooldown_until"] is not None
+    assert request_entry["northbound_transport"] == "http"
+    assert request_entry["southbound_transport"] == "http"
+    assert request_entry["sticky_provider"] is None
+    assert request_entry["fallback_reason"] is None
+    assert request_entry["attempts"][0]["transport"] == "http"
+    assert request_entry["attempts"][0]["sticky"] is False
+    assert request_entry["attempts"][0]["fallback_reason"] is None
 
 
 def test_toggle_provider_always_alive_clears_cooldown_and_restores_routing(workspace_tmp_dir: Path) -> None:
@@ -423,6 +441,27 @@ def test_patch_healthcheck_settings_updates_runtime_and_config(workspace_tmp_dir
     assert saved.healthcheck.stream is True
 
 
+def test_patch_responses_websocket_settings_updates_runtime_and_config(
+    workspace_tmp_dir: Path,
+) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/admin/api/responses-websocket-settings",
+            json={"enabled": True},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()["dashboard"]
+        assert payload["responses_websocket"]["enabled"] is True
+        assert payload["healthcheck"]["stream"] is False
+
+    saved = load_proxy_config(config_path)
+    assert saved.responses_websocket.enabled is True
+
+
 def test_promote_provider_writes_config_and_changes_routing(workspace_tmp_dir: Path) -> None:
     config_path = write_config(workspace_tmp_dir)
     app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
@@ -467,6 +506,7 @@ def test_update_provider_preserves_existing_api_key_when_blank(workspace_tmp_dir
                 "priority": 10,
                 "models": ["gpt-4.1", "gpt-4o-mini"],
                 "healthcheck_model": "gpt-4.1",
+                "supports_responses_websocket": False,
                 "timeout_seconds": 15,
                 "max_failures": 4,
                 "cooldown_seconds": 50,
@@ -483,6 +523,42 @@ def test_update_provider_preserves_existing_api_key_when_blank(workspace_tmp_dir
     assert renamed.base_url == "https://relay-a-2.example.com/v1"
     assert renamed.healthcheck_model == "gpt-4.1"
     assert renamed.always_alive is True
+    assert renamed.supports_responses_websocket is False
+
+
+def test_update_provider_preserves_existing_websocket_capability_when_omitted(
+    workspace_tmp_dir: Path,
+) -> None:
+    config_path = write_config(workspace_tmp_dir)
+    app = create_app(config_path, transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/admin/api/providers/relay_a",
+            json={
+                "name": "relay_a",
+                "base_url": "https://relay-a.example.com/v1",
+                "api_key": "",
+                "enabled": True,
+                "always_alive": False,
+                "priority": 10,
+                "models": ["gpt-4.1"],
+                "healthcheck_model": None,
+                "timeout_seconds": 10,
+                "max_failures": 2,
+                "cooldown_seconds": 30,
+            },
+        )
+
+        assert response.status_code == 200
+        provider = next(
+            item for item in response.json()["dashboard"]["providers"] if item["name"] == "relay_a"
+        )
+        assert provider["supports_responses_websocket"] is True
+
+    saved = load_proxy_config(config_path)
+    relay_a = next(provider for provider in saved.providers if provider.name == "relay_a")
+    assert relay_a.supports_responses_websocket is True
 
 
 def test_update_provider_priority_writes_config_and_changes_routing(workspace_tmp_dir: Path) -> None:
@@ -652,6 +728,7 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
                 "priority": 30,
                 "models": ["*"],
                 "healthcheck_model": "gpt-4o-mini",
+                "supports_responses_websocket": True,
                 "timeout_seconds": 25,
                 "max_failures": 2,
                 "cooldown_seconds": 40,
@@ -666,6 +743,7 @@ def test_create_provider_writes_to_config(workspace_tmp_dir: Path) -> None:
     created = next(provider for provider in saved.providers if provider.name == "relay_c")
     assert created.healthcheck_model == "gpt-4o-mini"
     assert created.always_alive is True
+    assert created.supports_responses_websocket is True
 
 
 def test_dashboard_global_stats_keep_deleted_provider_history(workspace_tmp_dir: Path) -> None:

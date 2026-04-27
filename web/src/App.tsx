@@ -13,6 +13,7 @@ import {
 
 import { api, setApiLocale } from './api'
 import { formatTimestamp } from './format'
+import { AppLogo } from './components/AppLogo'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { OverviewView } from './components/OverviewView'
 import { ProviderDrawer } from './components/ProviderDrawer'
@@ -42,10 +43,13 @@ import type {
   HealthcheckSummary,
   MetricsResponse,
   MetricsWindow,
+  MutationResponse,
   ProviderFormState,
   ProviderSummary,
+  ResponsesWebSocketSettingsFormState,
   RetryPolicyFormState,
   TokenUsageResponse,
+  TrafficPreset,
 } from './types'
 import type { LocalePreference } from './i18n'
 import type { ResolvedTheme, ThemePreference } from './theme'
@@ -74,6 +78,7 @@ const emptyForm: ProviderFormState = {
   modelMode: 'explicit',
   modelText: '',
   healthcheckModel: '',
+  supportsResponsesWebsocket: false,
   timeoutSeconds: '60',
   maxFailures: '3',
   cooldownSeconds: '30',
@@ -101,6 +106,7 @@ function formFromProvider(provider: ProviderSummary): ProviderFormState {
     modelMode: provider.supports_all_models ? 'all' : 'explicit',
     modelText: provider.supports_all_models ? '' : provider.models.join('\n'),
     healthcheckModel: provider.healthcheck_model ?? '',
+    supportsResponsesWebsocket: provider.supports_responses_websocket,
     timeoutSeconds: String(provider.timeout_seconds),
     maxFailures: String(provider.max_failures),
     cooldownSeconds: String(provider.cooldown_seconds),
@@ -135,6 +141,60 @@ function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): Hea
   }
 }
 
+function createResponsesWebSocketSettingsForm(
+  dashboard: DashboardResponse | null,
+): ResponsesWebSocketSettingsFormState {
+  return {
+    enabled: dashboard?.responses_websocket.enabled ?? false,
+  }
+}
+
+function providerFormsEqual(
+  left: ProviderFormState,
+  right: ProviderFormState,
+): boolean {
+  return (
+    left.name === right.name &&
+    left.baseUrl === right.baseUrl &&
+    left.apiKey === right.apiKey &&
+    left.enabled === right.enabled &&
+    left.alwaysAlive === right.alwaysAlive &&
+    left.priority === right.priority &&
+    left.modelMode === right.modelMode &&
+    left.modelText === right.modelText &&
+    left.healthcheckModel === right.healthcheckModel &&
+    left.supportsResponsesWebsocket === right.supportsResponsesWebsocket &&
+    left.timeoutSeconds === right.timeoutSeconds &&
+    left.maxFailures === right.maxFailures &&
+    left.cooldownSeconds === right.cooldownSeconds
+  )
+}
+
+function retryPolicyFormsEqual(
+  left: RetryPolicyFormState,
+  right: RetryPolicyFormState,
+): boolean {
+  return (
+    left.retryableStatusCodes === right.retryableStatusCodes &&
+    left.sameProviderRetryCount === right.sameProviderRetryCount &&
+    left.retryIntervalMs === right.retryIntervalMs
+  )
+}
+
+function healthcheckSettingsFormsEqual(
+  left: HealthcheckSettingsFormState,
+  right: HealthcheckSettingsFormState,
+): boolean {
+  return left.stream === right.stream
+}
+
+function responsesWebSocketSettingsFormsEqual(
+  left: ResponsesWebSocketSettingsFormState,
+  right: ResponsesWebSocketSettingsFormState,
+): boolean {
+  return left.enabled === right.enabled
+}
+
 
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
@@ -142,6 +202,7 @@ export default function App() {
   const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null)
   const [metricsWindow, setMetricsWindow] = useState<MetricsWindow>('24h')
   const [currentView, setCurrentView] = useState<AdminView>('overview')
+  const [trafficPreset, setTrafficPreset] = useState<TrafficPreset | null>(null)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | null>(null)
   const [editingProvider, setEditingProvider] = useState<ProviderSummary | null>(null)
   const [form, setForm] = useState<ProviderFormState>(emptyForm)
@@ -149,6 +210,8 @@ export default function App() {
   const [healthcheckForm, setHealthcheckForm] = useState<HealthcheckSettingsFormState>(() =>
     createHealthcheckSettingsForm(null),
   )
+  const [responsesWebSocketForm, setResponsesWebSocketForm] =
+    useState<ResponsesWebSocketSettingsFormState>(() => createResponsesWebSocketSettingsForm(null))
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showFloatingRefresh, setShowFloatingRefresh] = useState(false)
@@ -160,12 +223,14 @@ export default function App() {
   const activeRequestControllerRef = useRef<AbortController | null>(null)
   const toastIdRef = useRef(0)
   const toastTimerIds = useRef(new Set<number>())
+  const providerDrawerBusyRef = useRef(false)
   const metricsWindowRef = useRef(metricsWindow)
   metricsWindowRef.current = metricsWindow
   const initialLoadDone = useRef(false)
   const theme = resolveTheme(themePreference, systemTheme)
   const locale = resolveLocale(localePreference)
   const messages = messagesByLocale[locale]
+  const providerDrawerBusy = busyAction === 'submit' || busyAction === 'provider-autosave'
 
   const meta =
     currentView === 'overview'
@@ -353,11 +418,13 @@ export default function App() {
     }
     setRetryPolicyForm(createRetryPolicyForm(dashboard))
     setHealthcheckForm(createHealthcheckSettingsForm(dashboard))
+    setResponsesWebSocketForm(createResponsesWebSocketSettingsForm(dashboard))
   }, [dashboard])
 
   async function runMutation(
     actionKey: string,
     action: () => Promise<{ message: string; dashboard: DashboardResponse }>,
+    onSuccess?: (response: MutationResponse) => void,
   ): Promise<boolean> {
     cancelActiveRequest()
     setBusyAction(actionKey)
@@ -366,6 +433,7 @@ export default function App() {
       startTransition(() => {
         setDashboard(response.dashboard)
       })
+      onSuccess?.(response)
       pushToast('success', response.message)
       return true
     } catch (error) {
@@ -391,7 +459,7 @@ export default function App() {
   }
 
   function closeDrawer() {
-    if (busyAction === 'submit') {
+    if (providerDrawerBusyRef.current || providerDrawerBusy) {
       return
     }
     setDrawerMode(null)
@@ -399,20 +467,50 @@ export default function App() {
     setForm(createProviderForm(dashboard))
   }
 
-  async function handleSubmit() {
-    if (!drawerMode) {
+  async function handleSubmit(nextForm: ProviderFormState) {
+    if (drawerMode !== 'create') {
       return
     }
 
-    const success = await runMutation('submit', async () => {
-      if (drawerMode === 'create') {
-        return api.createProvider(form)
-      }
-      return api.updateProvider(editingProvider!.name, form)
-    })
+    providerDrawerBusyRef.current = true
+    const success = await runMutation('submit', () => api.createProvider(nextForm))
+    providerDrawerBusyRef.current = false
 
     if (success) {
       closeDrawer()
+    }
+  }
+
+  async function handleProviderAutoSave(nextForm: ProviderFormState) {
+    if (drawerMode !== 'edit' || busyAction !== null || editingProvider === null) {
+      return
+    }
+
+    setForm(nextForm)
+    if (providerFormsEqual(nextForm, formFromProvider(editingProvider))) {
+      return
+    }
+
+    providerDrawerBusyRef.current = true
+    try {
+      await runMutation(
+        'provider-autosave',
+        () => api.updateProvider(editingProvider.name, nextForm),
+        (response) => {
+          const updatedProvider =
+            response.dashboard.providers.find((provider) => provider.name === nextForm.name.trim()) ??
+            response.dashboard.providers.find((provider) => provider.name === editingProvider.name)
+
+          if (!updatedProvider) {
+            return
+          }
+
+          setEditingProvider(updatedProvider)
+          setForm(formFromProvider(updatedProvider))
+        },
+      )
+    } finally {
+      providerDrawerBusyRef.current = false
     }
   }
 
@@ -466,12 +564,60 @@ export default function App() {
     }
   }
 
-  async function handleRetryPolicySubmit() {
-    await runMutation('retry-policy', () => api.updateRetryPolicy(retryPolicyForm))
+  async function handleRetryPolicySubmit(nextForm: RetryPolicyFormState) {
+    if (busyAction !== null || !dashboard) {
+      return
+    }
+
+    setRetryPolicyForm(nextForm)
+    if (retryPolicyFormsEqual(nextForm, createRetryPolicyForm(dashboard))) {
+      return
+    }
+
+    await runMutation('retry-policy', () => api.updateRetryPolicy(nextForm))
   }
 
-  async function handleHealthcheckSettingsSubmit() {
-    await runMutation('healthcheck-settings', () => api.updateHealthcheckSettings(healthcheckForm))
+  async function handleHealthcheckSettingsSubmit(nextForm: HealthcheckSettingsFormState) {
+    if (busyAction !== null || !dashboard) {
+      return
+    }
+
+    setHealthcheckForm(nextForm)
+    if (healthcheckSettingsFormsEqual(nextForm, createHealthcheckSettingsForm(dashboard))) {
+      return
+    }
+
+    await runMutation('healthcheck-settings', () => api.updateHealthcheckSettings(nextForm))
+  }
+
+  async function handleResponsesWebSocketSettingsSubmit(
+    nextForm: ResponsesWebSocketSettingsFormState,
+  ) {
+    if (busyAction !== null || !dashboard) {
+      return
+    }
+
+    setResponsesWebSocketForm(nextForm)
+    if (
+      responsesWebSocketSettingsFormsEqual(
+        nextForm,
+        createResponsesWebSocketSettingsForm(dashboard),
+      )
+    ) {
+      return
+    }
+
+    await runMutation(
+      'responses-websocket-settings',
+      () => api.updateResponsesWebSocketSettings(nextForm),
+    )
+  }
+
+  function navigateAdmin(view: AdminView, nextTrafficPreset?: TrafficPreset) {
+    if (view === 'traffic') {
+      setTrafficPreset(nextTrafficPreset ?? null)
+    }
+    setCurrentView(view)
   }
 
   const proxyBase =
@@ -491,8 +637,13 @@ export default function App() {
       <div className="admin-shell">
       <aside className="shell-sidebar">
         <div className="sidebar-brand">
-          <span className="eyebrow">{messages.app.brand}</span>
-          <h2>{messages.app.adminConsole}</h2>
+          <div className="brand-lockup">
+            <AppLogo className="brand-mark" title={messages.app.brand} />
+            <div className="brand-copy">
+              <span className="eyebrow">{messages.app.brand}</span>
+              <h2>{messages.app.adminConsole}</h2>
+            </div>
+          </div>
           <p>{messages.app.sidebarCopy}</p>
         </div>
 
@@ -500,7 +651,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item${currentView === 'overview' ? ' nav-item-active' : ''}`}
-            onClick={() => setCurrentView('overview')}
+            onClick={() => navigateAdmin('overview')}
           >
             <LayoutDashboard size={18} />
             <span>{messages.app.navOverview}</span>
@@ -508,7 +659,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item${currentView === 'providers' ? ' nav-item-active' : ''}`}
-            onClick={() => setCurrentView('providers')}
+            onClick={() => navigateAdmin('providers')}
           >
             <Cable size={18} />
             <span>{messages.app.navProviders}</span>
@@ -516,7 +667,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item${currentView === 'traffic' ? ' nav-item-active' : ''}`}
-            onClick={() => setCurrentView('traffic')}
+            onClick={() => navigateAdmin('traffic')}
           >
             <ScrollText size={18} />
             <span>{messages.app.navTraffic}</span>
@@ -524,7 +675,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item${currentView === 'settings' ? ' nav-item-active' : ''}`}
-            onClick={() => setCurrentView('settings')}
+            onClick={() => navigateAdmin('settings')}
           >
             <SlidersHorizontal size={18} />
             <span>{messages.app.navSettings}</span>
@@ -643,7 +794,7 @@ export default function App() {
               proxyBase={proxyBase}
               loading={loading}
               onMetricsWindowChange={(window) => setMetricsWindow(window)}
-              onNavigate={(view) => setCurrentView(view)}
+              onNavigate={(view, preset) => navigateAdmin(view, preset)}
             />
           ) : currentView === 'providers' ? (
             <ProvidersView
@@ -659,20 +810,27 @@ export default function App() {
               onPrioritySave={handlePrioritySave}
             />
           ) : currentView === 'traffic' ? (
-            <TrafficView requests={dashboard.recent_requests} />
+            <TrafficView requests={dashboard.recent_requests} preset={trafficPreset} />
           ) : (
             <SettingsView
+              settingsBusy={busyAction !== null}
               retryPolicyForm={retryPolicyForm}
               retryPolicyBusy={busyAction === 'retry-policy'}
               onRetryPolicyChange={setRetryPolicyForm}
-              onRetryPolicySubmit={() => {
-                void handleRetryPolicySubmit()
+              onRetryPolicySubmit={(nextForm) => {
+                void handleRetryPolicySubmit(nextForm)
               }}
               healthcheckForm={healthcheckForm}
               healthcheckBusy={busyAction === 'healthcheck-settings'}
               onHealthcheckChange={setHealthcheckForm}
-              onHealthcheckSubmit={() => {
-                void handleHealthcheckSettingsSubmit()
+              onHealthcheckSubmit={(nextForm) => {
+                void handleHealthcheckSettingsSubmit(nextForm)
+              }}
+              responsesWebSocketForm={responsesWebSocketForm}
+              responsesWebSocketBusy={busyAction === 'responses-websocket-settings'}
+              onResponsesWebSocketChange={setResponsesWebSocketForm}
+              onResponsesWebSocketSubmit={(nextForm) => {
+                void handleResponsesWebSocketSettingsSubmit(nextForm)
               }}
             />
           )}
@@ -697,12 +855,15 @@ export default function App() {
       <ProviderDrawer
         open={drawerMode !== null}
         mode={drawerMode ?? 'create'}
-        busy={busyAction === 'submit'}
+        busy={providerDrawerBusy}
         form={form}
         onClose={closeDrawer}
         onChange={setForm}
-        onSubmit={() => {
-          void handleSubmit()
+        onSubmit={(nextForm) => {
+          void handleSubmit(nextForm)
+        }}
+        onAutoSave={(nextForm) => {
+          void handleProviderAutoSave(nextForm)
         }}
       />
 

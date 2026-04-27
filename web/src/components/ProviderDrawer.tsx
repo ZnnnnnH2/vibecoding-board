@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react'
+import type { FocusEvent, FormEvent, KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Network, Route, ShieldAlert, X, Save, Activity } from 'lucide-react'
 
@@ -12,7 +12,8 @@ type ProviderDrawerProps = {
   form: ProviderFormState
   onClose: () => void
   onChange: (next: ProviderFormState) => void
-  onSubmit: () => void
+  onSubmit: (form: ProviderFormState) => void
+  onAutoSave: (form: ProviderFormState) => void
 }
 
 export function ProviderDrawer({
@@ -23,8 +24,10 @@ export function ProviderDrawer({
   onClose,
   onChange,
   onSubmit,
+  onAutoSave,
 }: ProviderDrawerProps) {
   const { messages } = useI18n()
+  const autoSaveEnabled = mode === 'edit'
   const submitLabel = mode === 'create' ? messages.drawer.addProvider : messages.drawer.saveChanges
 
   function update<K extends keyof ProviderFormState>(key: K, value: ProviderFormState[K]) {
@@ -34,9 +37,44 @@ export function ProviderDrawer({
     })
   }
 
+  function commit<K extends keyof ProviderFormState>(key: K, value: ProviderFormState[K]) {
+    const nextForm = {
+      ...form,
+      [key]: value,
+    }
+    onChange(nextForm)
+    if (autoSaveEnabled) {
+      onAutoSave(nextForm)
+    }
+  }
+
+  function commitCurrentForm() {
+    if (autoSaveEnabled) {
+      onAutoSave(form)
+    }
+  }
+
+  function handleGroupedBlur(event: FocusEvent<HTMLElement>) {
+    const nextFocused =
+      event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null
+    if (nextFocused && event.currentTarget.contains(nextFocused)) {
+      return
+    }
+    commitCurrentForm()
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    onSubmit()
+    if (mode === 'create') {
+      onSubmit(form)
+    }
+  }
+
+  function blurOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (autoSaveEnabled && event.key === 'Enter') {
+      event.preventDefault()
+      event.currentTarget.blur()
+    }
   }
 
   return (
@@ -88,7 +126,10 @@ export function ProviderDrawer({
                     <input
                       value={form.name}
                       onChange={(event) => update('name', event.target.value)}
+                      onBlur={(event) => commit('name', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
                       placeholder={messages.drawer.namePlaceholder}
+                      disabled={busy}
                       required
                     />
                     <small className="field-hint">{messages.drawer.nameHint}</small>
@@ -99,7 +140,10 @@ export function ProviderDrawer({
                     <input
                       value={form.baseUrl}
                       onChange={(event) => update('baseUrl', event.target.value)}
+                      onBlur={(event) => commit('baseUrl', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
                       placeholder={messages.drawer.baseUrlPlaceholder}
+                      disabled={busy}
                       required
                     />
                     <small className="field-hint">{messages.drawer.baseUrlHint}</small>
@@ -111,14 +155,17 @@ export function ProviderDrawer({
                       type="password"
                       value={form.apiKey}
                       onChange={(event) => update('apiKey', event.target.value)}
+                      onBlur={(event) => commit('apiKey', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
                       placeholder={mode === 'edit' ? messages.drawer.apiKeyEditPlaceholder : messages.drawer.apiKeyCreatePlaceholder}
+                      disabled={busy}
                       required={mode === 'create'}
                     />
                     <small className="field-hint">{messages.drawer.apiKeyHint}</small>
                   </label>
                 </div>
 
-                <label className="toggle-switch-wrapper">
+                <label className="toggle-switch-wrapper" onBlur={handleGroupedBlur}>
                   <div className="toggle-switch-info">
                     <strong>{messages.drawer.enableAfterSave}</strong>
                   </div>
@@ -127,6 +174,23 @@ export function ProviderDrawer({
                       type="checkbox"
                       checked={form.enabled}
                       onChange={(event) => update('enabled', event.target.checked)}
+                      disabled={busy}
+                    />
+                    <span className="toggle-slider"></span>
+                  </div>
+                </label>
+
+                <label className="toggle-switch-wrapper" onBlur={handleGroupedBlur}>
+                  <div className="toggle-switch-info">
+                    <strong>{messages.drawer.responsesWebSocket}</strong>
+                    <span>{messages.drawer.responsesWebSocketHint}</span>
+                  </div>
+                  <div className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.supportsResponsesWebsocket}
+                      onChange={(event) => update('supportsResponsesWebsocket', event.target.checked)}
+                      disabled={busy}
                     />
                     <span className="toggle-slider"></span>
                   </div>
@@ -153,6 +217,9 @@ export function ProviderDrawer({
                       step="1"
                       value={form.priority}
                       onChange={(event) => update('priority', event.target.value)}
+                      onBlur={(event) => commit('priority', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
+                      disabled={busy}
                       required
                     />
                     <small className="field-hint">{messages.drawer.priorityHint}</small>
@@ -163,17 +230,21 @@ export function ProviderDrawer({
                     <input
                       value={form.healthcheckModel}
                       onChange={(event) => update('healthcheckModel', event.target.value)}
+                      onBlur={(event) => commit('healthcheckModel', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
                       placeholder={form.modelMode === 'all' ? messages.drawer.wildcardPlaceholder : messages.drawer.healthcheckPlaceholder}
+                      disabled={busy}
                     />
                     <small className="field-hint">{messages.drawer.healthcheckHint}</small>
                   </label>
                 </div>
 
-                <div className="segment-control">
+                <div className="segment-control" onBlur={handleGroupedBlur}>
                   <button
                     type="button"
                     className={form.modelMode === 'all' ? 'segment-active' : ''}
                     onClick={() => update('modelMode', 'all')}
+                    disabled={busy}
                   >
                     {messages.drawer.allModels}
                   </button>
@@ -181,6 +252,7 @@ export function ProviderDrawer({
                     type="button"
                     className={form.modelMode === 'explicit' ? 'segment-active' : ''}
                     onClick={() => update('modelMode', 'explicit')}
+                    disabled={busy}
                   >
                     {messages.drawer.explicitList}
                   </button>
@@ -193,7 +265,9 @@ export function ProviderDrawer({
                       rows={6}
                       value={form.modelText}
                       onChange={(event) => update('modelText', event.target.value)}
+                      onBlur={(event) => commit('modelText', event.currentTarget.value)}
                       placeholder={messages.drawer.modelsPlaceholder}
+                      disabled={busy}
                       required
                     />
                     <small className="field-hint">{messages.drawer.modelsHint}</small>
@@ -227,6 +301,9 @@ export function ProviderDrawer({
                       step="1"
                       value={form.timeoutSeconds}
                       onChange={(event) => update('timeoutSeconds', event.target.value)}
+                      onBlur={(event) => commit('timeoutSeconds', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
+                      disabled={busy}
                       required
                     />
                   </label>
@@ -239,6 +316,9 @@ export function ProviderDrawer({
                       step="1"
                       value={form.maxFailures}
                       onChange={(event) => update('maxFailures', event.target.value)}
+                      onBlur={(event) => commit('maxFailures', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
+                      disabled={busy}
                       required
                     />
                   </label>
@@ -251,12 +331,15 @@ export function ProviderDrawer({
                       step="1"
                       value={form.cooldownSeconds}
                       onChange={(event) => update('cooldownSeconds', event.target.value)}
+                      onBlur={(event) => commit('cooldownSeconds', event.currentTarget.value)}
+                      onKeyDown={blurOnEnter}
+                      disabled={busy}
                       required
                     />
                   </label>
                 </div>
 
-                <label className="toggle-switch-wrapper">
+                <label className="toggle-switch-wrapper" onBlur={handleGroupedBlur}>
                   <div className="toggle-switch-info">
                     <strong>{messages.drawer.alwaysAlive}</strong>
                     <span>{messages.drawer.alwaysAliveHint}</span>
@@ -266,6 +349,7 @@ export function ProviderDrawer({
                       type="checkbox"
                       checked={form.alwaysAlive}
                       onChange={(event) => update('alwaysAlive', event.target.checked)}
+                      disabled={busy}
                     />
                     <span className="toggle-slider"></span>
                   </div>
@@ -274,12 +358,18 @@ export function ProviderDrawer({
 
               <div className="drawer-footer">
                 <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-                  {messages.drawer.cancel}
+                  {autoSaveEnabled ? messages.drawer.close : messages.drawer.cancel}
                 </button>
-                <button type="submit" className="accent-button" disabled={busy}>
-                  {busy ? <Activity size={18} className="spin-icon" /> : <Save size={18} />}
-                  {busy ? messages.drawer.saving : submitLabel}
-                </button>
+                {autoSaveEnabled ? (
+                  <span className="section-caption">
+                    {busy ? messages.drawer.saving : messages.drawer.blurToApply}
+                  </span>
+                ) : (
+                  <button type="submit" className="accent-button" disabled={busy}>
+                    {busy ? <Activity size={18} className="spin-icon" /> : <Save size={18} />}
+                    {busy ? messages.drawer.saving : submitLabel}
+                  </button>
+                )}
               </div>
             </form>
           </motion.aside>

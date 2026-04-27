@@ -20,6 +20,7 @@ class ProviderState:
     last_error: str | None = None
     last_failure_at: datetime | None = None
     last_success_at: datetime | None = None
+    ws_unsupported: bool = False
 
     def is_available(self, now: datetime) -> bool:
         if not self.provider.enabled:
@@ -46,11 +47,13 @@ class ProviderSnapshot:
     models: tuple[str, ...]
     supports_all_models: bool
     healthcheck_model: str | None
+    supports_responses_websocket: bool
     consecutive_failures: int
     cooldown_until: datetime | None
     last_error: str | None
     last_failure_at: datetime | None
     last_success_at: datetime | None
+    ws_unsupported: bool
 
     @classmethod
     def from_state(cls, state: ProviderState) -> "ProviderSnapshot":
@@ -68,11 +71,13 @@ class ProviderSnapshot:
             models=provider.models,
             supports_all_models=provider.supports_all_models,
             healthcheck_model=provider.healthcheck_model,
+            supports_responses_websocket=provider.supports_responses_websocket,
             consecutive_failures=state.consecutive_failures,
             cooldown_until=state.cooldown_until,
             last_error=state.last_error,
             last_failure_at=state.last_failure_at,
             last_success_at=state.last_success_at,
+            ws_unsupported=state.ws_unsupported,
         )
 
 
@@ -134,6 +139,7 @@ class ProviderRegistry:
                 state.last_error = previous.last_error
                 state.last_failure_at = previous.last_failure_at
                 state.last_success_at = previous.last_success_at
+                state.ws_unsupported = previous.ws_unsupported
 
     async def mark_success(self, provider_name: str) -> None:
         async with self._lock:
@@ -173,6 +179,19 @@ class ProviderRegistry:
                 state.cooldown_until = None
                 return
             state.cooldown_until = now + timedelta(seconds=state.provider.cooldown_seconds)
+
+    async def mark_ws_unsupported(
+        self,
+        provider_name: str,
+        error: str | None = None,
+    ) -> None:
+        del error
+        async with self._lock:
+            self._states[provider_name].ws_unsupported = True
+
+    async def clear_ws_unsupported(self, provider_name: str) -> None:
+        async with self._lock:
+            self._states[provider_name].ws_unsupported = False
 
     async def get_state(self, provider_name: str) -> ProviderSnapshot:
         async with self._lock:

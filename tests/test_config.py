@@ -150,3 +150,92 @@ def test_provider_always_alive_defaults_false_and_round_trips_when_enabled() -> 
     assert default_config.providers[0].always_alive is False
     assert enabled_config.providers[0].always_alive is True
     assert "always_alive: true" in dump_proxy_config(enabled_config)
+
+
+def test_provider_supports_responses_websocket_defaults_false_and_round_trips_when_enabled() -> None:
+    default_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+    enabled_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "supports_responses_websocket": True,
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+
+    assert default_config.providers[0].supports_responses_websocket is False
+    assert enabled_config.providers[0].supports_responses_websocket is True
+    assert enabled_config.providers[0].to_runtime_provider().supports_responses_websocket is True
+    assert "supports_responses_websocket: true" in dump_proxy_config(enabled_config)
+
+
+def test_responses_websocket_settings_default_false_and_round_trip_when_enabled() -> None:
+    default_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+    enabled_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "responses_websocket": {"enabled": True},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+
+    assert default_config.responses_websocket.enabled is False
+    assert enabled_config.responses_websocket.enabled is True
+    assert "responses_websocket:\n  enabled: true" in dump_proxy_config(enabled_config)

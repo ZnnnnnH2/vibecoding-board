@@ -19,6 +19,7 @@ import gzip
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
+from time import perf_counter
 import uuid
 
 import httpx
@@ -30,8 +31,9 @@ from fastapi.testclient import TestClient
 from vibecoding_board.admin_metrics import AdminMetricsStore
 from vibecoding_board.app import UPSTREAM_POOL_LIMITS, create_app
 from vibecoding_board.config import ProxyConfig, dump_proxy_config
-from vibecoding_board.request_log import UsageLogEntry
-from vibecoding_board.service import StreamUsageParser
+from vibecoding_board.request_log import RequestLogStore, UsageLogEntry
+from vibecoding_board.service import ProxyService, StreamUsageParser
+from vibecoding_board.token_ledger import TokenLedger
 
 
 def build_config() -> ProxyConfig:
@@ -380,6 +382,21 @@ def test_parser_extracts_usage_from_plain_sse() -> None:
     assert parser.usage.total_tokens == 5
     assert parser.usage.input_tokens == 3
     assert parser.usage.output_tokens == 2
+    assert parser.terminal_state == "success"
+    assert parser.terminal_status_code == 200
+
+
+def test_parser_records_terminal_error_events() -> None:
+    parser = StreamUsageParser()
+
+    parser.feed(
+        b'data: {"type":"response.failed","response":{"status":500,'
+        b'"error":{"message":"tool failed"}}}\n\n'
+    )
+
+    assert parser.terminal_state == "error"
+    assert parser.terminal_status_code == 500
+    assert parser.terminal_error_message == "tool failed"
 
 
 def test_parser_disable_is_idempotent() -> None:
@@ -417,6 +434,58 @@ def _install_aclose_spy(app) -> list[str]:
 
     proxy_client.send = spying_send  # type: ignore[method-assign]
     return closes
+
+
+class _DummyProvider:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _DummyRegistry:
+    def __init__(self) -> None:
+        self.successes: list[str] = []
+        self.failures: list[tuple[str, str]] = []
+
+    async def mark_success(self, provider_name: str) -> None:
+        self.successes.append(provider_name)
+
+    async def mark_retryable_failure(self, provider_name: str, error: str) -> None:
+        self.failures.append((provider_name, error))
+
+
+class _FakeStreamResponse:
+    status_code = 200
+    headers: dict[str, str] = {}
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def _build_stream_test_service(
+    tmp_path: Path,
+) -> tuple[ProxyService, RequestLogStore, _FakeStreamResponse]:
+    store = RequestLogStore()
+    response = _FakeStreamResponse()
+    service = ProxyService(
+        runtime_manager=object(),  # type: ignore[arg-type]
+        request_log_store=store,
+        metrics_store=AdminMetricsStore(tmp_path / "metrics.json"),
+        token_ledger=TokenLedger(tmp_path / "tokens.json"),
+        client=object(),  # type: ignore[arg-type]
+    )
+    return service, store, response
+
+
+async def _collect_stream(stream: AsyncIterator[bytes]) -> list[bytes]:
+    return [chunk async for chunk in stream]
+
+
+async def _never_finishing_chunks(terminal_chunk: bytes) -> AsyncIterator[bytes]:
+    yield terminal_chunk
+    await asyncio.Event().wait()
 
 
 def test_stream_closes_upstream_response_promptly_on_normal_end(
@@ -466,6 +535,90 @@ def test_stream_closes_upstream_response_promptly_on_normal_end(
     request_entry = dashboard["recent_requests"][0]
     assert request_entry["state"] == "success"
     assert request_entry["usage"]["total_tokens"] == 2
+
+
+@pytest.mark.anyio
+async def test_stream_response_stops_at_done_without_waiting_for_more_chunks(
+    workspace_tmp_dir: Path,
+) -> None:
+    service, store, response = _build_stream_test_service(workspace_tmp_dir)
+    provider = _DummyProvider("relay_a")
+    registry = _DummyRegistry()
+    log_id = await store.begin(
+        endpoint="/v1/chat/completions",
+        request_kind="chat",
+        model="gpt-4.1",
+        stream=True,
+    )
+
+    chunks = await asyncio.wait_for(
+        _collect_stream(
+            service._stream_response(
+                registry=registry,
+                provider=provider,
+                final_url="https://relay-a.example.com/v1/chat/completions",
+                response=response,
+                first_chunk=b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+                stream_iterator=_never_finishing_chunks(b"data: [DONE]\n\n"),
+                model="gpt-4.1",
+                log_id=log_id,
+                started_at=perf_counter(),
+                ttfb_ms=1,
+                attempts=[],
+                sticky_provider=None,
+            )
+        ),
+        timeout=1.0,
+    )
+    entries = await store.list_entries()
+
+    assert b"".join(chunks).endswith(b"data: [DONE]\n\n")
+    assert response.closed is True
+    assert registry.successes == ["relay_a"]
+    assert entries[0]["state"] == "success"
+
+
+@pytest.mark.anyio
+async def test_stream_response_stops_at_completed_event_without_waiting_for_more_chunks(
+    workspace_tmp_dir: Path,
+) -> None:
+    service, store, response = _build_stream_test_service(workspace_tmp_dir)
+    provider = _DummyProvider("relay_a")
+    registry = _DummyRegistry()
+    log_id = await store.begin(
+        endpoint="/v1/responses",
+        request_kind="response",
+        model="gpt-4.1",
+        stream=True,
+    )
+
+    chunks = await asyncio.wait_for(
+        _collect_stream(
+            service._stream_response(
+                registry=registry,
+                provider=provider,
+                final_url="https://relay-a.example.com/v1/responses",
+                response=response,
+                first_chunk=b'data: {"type":"response.output_text.delta","delta":"hi"}\n\n',
+                stream_iterator=_never_finishing_chunks(
+                    b'data: {"type":"response.completed","response":{"id":"resp_terminal"}}\n\n'
+                ),
+                model="gpt-4.1",
+                log_id=log_id,
+                started_at=perf_counter(),
+                ttfb_ms=1,
+                attempts=[],
+                sticky_provider=None,
+            )
+        ),
+        timeout=1.0,
+    )
+    entries = await store.list_entries()
+
+    assert b"response.completed" in b"".join(chunks)
+    assert response.closed is True
+    assert registry.successes == ["relay_a"]
+    assert entries[0]["state"] == "success"
 
 
 def test_stream_closes_upstream_response_on_client_abort_midstream(

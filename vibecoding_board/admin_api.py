@@ -6,7 +6,12 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from vibecoding_board.admin_i18n import admin_message, resolve_admin_locale, translate_admin_error
-from vibecoding_board.config import HealthcheckConfig, ProviderConfig, RetryPolicyConfig
+from vibecoding_board.config import (
+    HealthcheckConfig,
+    ProviderConfig,
+    ResponsesWebSocketConfig,
+    RetryPolicyConfig,
+)
 from vibecoding_board.request_log import RequestLogStore
 from vibecoding_board.runtime import RuntimeManager, RuntimeMutationError
 
@@ -22,6 +27,7 @@ class ProviderCreatePayload(BaseModel):
     priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
+    supports_responses_websocket: bool = False
     timeout_seconds: float = Field(default=60.0, gt=0)
     max_failures: int = Field(default=3, ge=1)
     cooldown_seconds: float = Field(default=30.0, ge=0)
@@ -36,6 +42,7 @@ class ProviderCreatePayload(BaseModel):
             priority=self.priority if self.priority is not None else default_priority,
             models=self.models,
             healthcheck_model=self.healthcheck_model,
+            supports_responses_websocket=self.supports_responses_websocket,
             timeout_seconds=self.timeout_seconds,
             max_failures=self.max_failures,
             cooldown_seconds=self.cooldown_seconds,
@@ -53,6 +60,7 @@ class ProviderUpdatePayload(BaseModel):
     priority: int | None = None
     models: list[str] = Field(min_length=1)
     healthcheck_model: str | None = None
+    supports_responses_websocket: bool | None = None
     timeout_seconds: float = Field(default=60.0, gt=0)
     max_failures: int = Field(default=3, ge=1)
     cooldown_seconds: float = Field(default=30.0, ge=0)
@@ -62,6 +70,7 @@ class ProviderUpdatePayload(BaseModel):
         *,
         default_priority: int,
         existing_api_key: str,
+        existing_supports_responses_websocket: bool,
     ) -> ProviderConfig:
         api_key = (self.api_key or "").strip() or existing_api_key
         return ProviderConfig(
@@ -73,6 +82,11 @@ class ProviderUpdatePayload(BaseModel):
             priority=self.priority if self.priority is not None else default_priority,
             models=self.models,
             healthcheck_model=self.healthcheck_model,
+            supports_responses_websocket=(
+                self.supports_responses_websocket
+                if self.supports_responses_websocket is not None
+                else existing_supports_responses_websocket
+            ),
             timeout_seconds=self.timeout_seconds,
             max_failures=self.max_failures,
             cooldown_seconds=self.cooldown_seconds,
@@ -107,6 +121,15 @@ class HealthcheckUpdatePayload(BaseModel):
 
     def to_healthcheck_config(self) -> HealthcheckConfig:
         return HealthcheckConfig(stream=self.stream)
+
+
+class ResponsesWebSocketUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+    def to_responses_websocket_config(self) -> ResponsesWebSocketConfig:
+        return ResponsesWebSocketConfig(enabled=self.enabled)
 
 
 def build_admin_router() -> APIRouter:
@@ -193,6 +216,29 @@ def build_admin_router() -> APIRouter:
             admin_message(locale, "updated_healthcheck_settings"),
         )
 
+    @router.patch("/responses-websocket-settings")
+    async def update_responses_websocket_settings(
+        payload: ResponsesWebSocketUpdatePayload,
+        request: Request,
+    ):
+        locale = resolve_admin_locale(request)
+        manager = get_manager(request)
+        request_log_store = get_request_log_store(request)
+        try:
+            await manager.update_responses_websocket(
+                payload.to_responses_websocket_config()
+            )
+        except RuntimeMutationError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=translate_admin_error(locale, str(exc)),
+            ) from exc
+        return await mutation_response(
+            manager,
+            request_log_store,
+            admin_message(locale, "updated_responses_websocket_settings"),
+        )
+
     @router.post("/providers")
     async def create_provider(payload: ProviderCreatePayload, request: Request):
         locale = resolve_admin_locale(request)
@@ -235,6 +281,7 @@ def build_admin_router() -> APIRouter:
         replacement = payload.to_provider_config(
             default_priority=existing.priority,
             existing_api_key=existing.api_key,
+            existing_supports_responses_websocket=existing.supports_responses_websocket,
         )
         try:
             await manager.update_provider(provider_name, replacement)
@@ -243,6 +290,11 @@ def build_admin_router() -> APIRouter:
                 status_code=exc.status_code,
                 detail=translate_admin_error(locale, str(exc)),
             ) from exc
+        if provider_name != replacement.name:
+            await request.app.state.service.rename_provider_references(
+                provider_name,
+                replacement.name,
+            )
         return await mutation_response(
             manager,
             request_log_store,

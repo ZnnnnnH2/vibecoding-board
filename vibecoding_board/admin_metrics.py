@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from vibecoding_board.request_log import UsageLogEntry
+from vibecoding_board.request_log import AttemptLogEntry, UsageLogEntry
 
 
 MetricsWindow = Literal["24h", "7d"]
@@ -36,6 +36,10 @@ class HourlyMetricsBucket:
     duration_count: int = 0
     ttfb_sum_ms: int = 0
     ttfb_count: int = 0
+    failover_requests: int = 0
+    failover_next_provider_count: int = 0
+    retry_same_provider_count: int = 0
+    retryable_error_count: int = 0
     providers: dict[str, ProviderMetricsSummary] = field(default_factory=dict)
 
     def average_duration_ms(self) -> float | None:
@@ -65,6 +69,10 @@ class HourlyMetricsBucket:
             "duration_count": self.duration_count,
             "ttfb_sum_ms": self.ttfb_sum_ms,
             "ttfb_count": self.ttfb_count,
+            "failover_requests": self.failover_requests,
+            "failover_next_provider_count": self.failover_next_provider_count,
+            "retry_same_provider_count": self.retry_same_provider_count,
+            "retryable_error_count": self.retryable_error_count,
             "providers": {
                 provider_name: {
                     "requests": summary.requests,
@@ -95,6 +103,10 @@ class HourlyMetricsBucket:
             duration_count=int(payload.get("duration_count", 0)),
             ttfb_sum_ms=int(payload.get("ttfb_sum_ms", 0)),
             ttfb_count=int(payload.get("ttfb_count", 0)),
+            failover_requests=int(payload.get("failover_requests", 0)),
+            failover_next_provider_count=int(payload.get("failover_next_provider_count", 0)),
+            retry_same_provider_count=int(payload.get("retry_same_provider_count", 0)),
+            retryable_error_count=int(payload.get("retryable_error_count", 0)),
             providers=providers,
         )
 
@@ -159,12 +171,21 @@ class AdminMetricsStore:
         duration_ms: int | None,
         ttfb_ms: int | None,
         usage: UsageLogEntry | None,
+        attempts: list[AttemptLogEntry] | None = None,
         completed_at: datetime | None = None,
     ) -> None:
         timestamp = completed_at or datetime.now(UTC)
         bucket_start = timestamp.replace(minute=0, second=0, microsecond=0)
         bucket_key = bucket_start.isoformat()
         total_tokens = 0 if usage is None else usage.total_tokens or 0
+        attempt_logs = attempts or []
+        failover_count = sum(
+            1 for attempt in attempt_logs if attempt.next_action == "failover_next_provider"
+        )
+        same_provider_retry_count = sum(
+            1 for attempt in attempt_logs if attempt.next_action == "retry_same_provider"
+        )
+        retryable_error_count = sum(1 for attempt in attempt_logs if attempt.retryable)
 
         async with self._lock:
             bucket = self._buckets.get(bucket_key)
@@ -187,6 +208,12 @@ class AdminMetricsStore:
             if ttfb_ms is not None:
                 bucket.ttfb_sum_ms += ttfb_ms
                 bucket.ttfb_count += 1
+
+            if failover_count:
+                bucket.failover_requests += 1
+            bucket.failover_next_provider_count += failover_count
+            bucket.retry_same_provider_count += same_provider_retry_count
+            bucket.retryable_error_count += retryable_error_count
 
             if final_provider is not None:
                 provider_summary = bucket.providers.setdefault(final_provider, ProviderMetricsSummary())
@@ -244,10 +271,15 @@ class AdminMetricsStore:
         duration_points = []
         success_points = []
         ttfb_points = []
+        failover_points = []
 
         total_requests = 0
         total_tokens = 0
         total_success = 0
+        total_failover_requests = 0
+        total_failover_next_provider = 0
+        total_retry_same_provider = 0
+        total_retryable_errors = 0
         duration_sum = 0
         duration_count = 0
         state_counts = {"success": 0, "interrupted": 0, "error": 0}
@@ -260,12 +292,14 @@ class AdminMetricsStore:
             average_duration = bucket.average_duration_ms() if bucket is not None else None
             success_rate = bucket.success_rate() if bucket is not None else None
             average_ttfb = bucket.average_ttfb_ms() if bucket is not None else None
+            failover_requests = bucket.failover_requests if bucket is not None else 0
 
             request_points.append(self._point(bucket_start, requests))
             token_points.append(self._point(bucket_start, tokens))
             duration_points.append(self._point(bucket_start, average_duration))
             success_points.append(self._point(bucket_start, success_rate))
             ttfb_points.append(self._point(bucket_start, average_ttfb))
+            failover_points.append(self._point(bucket_start, failover_requests))
 
             if bucket is None:
                 continue
@@ -273,6 +307,10 @@ class AdminMetricsStore:
             total_requests += bucket.requests
             total_tokens += bucket.total_tokens
             total_success += bucket.success_count
+            total_failover_requests += bucket.failover_requests
+            total_failover_next_provider += bucket.failover_next_provider_count
+            total_retry_same_provider += bucket.retry_same_provider_count
+            total_retryable_errors += bucket.retryable_error_count
             duration_sum += bucket.duration_sum_ms
             duration_count += bucket.duration_count
             state_counts["success"] += bucket.success_count
@@ -303,6 +341,10 @@ class AdminMetricsStore:
             "summary": {
                 "requests": total_requests,
                 "total_tokens": total_tokens,
+                "failover_requests": total_failover_requests,
+                "failover_next_provider_count": total_failover_next_provider,
+                "retry_same_provider_count": total_retry_same_provider,
+                "retryable_error_count": total_retryable_errors,
                 "average_duration_ms": round(duration_sum / duration_count, 2) if duration_count else None,
                 "success_rate": round(total_success / total_requests, 4) if total_requests else None,
             },
@@ -312,6 +354,7 @@ class AdminMetricsStore:
                 "duration_ms": duration_points,
                 "success_rate": success_points,
                 "average_ttfb_ms": ttfb_points,
+                "failover_requests": failover_points,
             },
             "breakdowns": {
                 "providers": provider_breakdown,
@@ -319,6 +362,10 @@ class AdminMetricsStore:
                     {"state": "success", "count": state_counts["success"]},
                     {"state": "interrupted", "count": state_counts["interrupted"]},
                     {"state": "error", "count": state_counts["error"]},
+                ],
+                "next_actions": [
+                    {"next_action": "failover_next_provider", "count": total_failover_next_provider},
+                    {"next_action": "retry_same_provider", "count": total_retry_same_provider},
                 ],
             },
         }

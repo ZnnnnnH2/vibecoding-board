@@ -144,6 +144,9 @@ export function getRequestStateMeta(
   if (state === 'interrupted') {
     return { label: messages.requestState.interrupted, tone: 'amber' }
   }
+  if (state === 'stale') {
+    return { label: messages.requestState.stale, tone: 'amber' }
+  }
   return { label: messages.requestState.failed, tone: 'rose' }
 }
 
