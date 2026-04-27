@@ -301,6 +301,7 @@ a {
 .sidebar-status-card {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
   padding: 1rem 1.05rem;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.04);
@@ -309,6 +310,15 @@ a {
 
 .sidebar-status-card strong {
   font-size: 0.96rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.sidebar-status-card .surface-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .shell-main {
@@ -434,6 +444,7 @@ a {
 .hero-callout {
   display: grid;
   gap: 0.8rem;
+  min-width: 0;
   align-content: start;
   padding: 1.15rem;
   border-radius: var(--radius-lg);
@@ -448,6 +459,9 @@ a {
 .drawer-section strong {
   font-size: 1.05rem;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .kpi-grid {
@@ -461,6 +475,7 @@ a {
   padding: 1.15rem;
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .token-kpi-grid {
@@ -535,6 +550,22 @@ a {
 .kpi-head {
   align-items: center;
   color: var(--text-soft);
+  min-width: 0;
+}
+
+.kpi-head .surface-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.kpi-head svg {
+  flex: 0 0 auto;
+}
+
+.kpi-card p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .split-grid {
@@ -576,6 +607,7 @@ a {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+  min-width: 0;
   padding: 0.95rem 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -596,6 +628,9 @@ a {
 .table-title-row strong {
   display: block;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .compact-row span,
@@ -613,6 +648,7 @@ a {
 .compact-row-side {
   display: grid;
   gap: 0.45rem;
+  min-width: 0;
   justify-items: end;
 }
 
@@ -962,6 +998,7 @@ a {
 .table-primary {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .table-title-row {
@@ -969,6 +1006,7 @@ a {
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .priority-editor {
@@ -1204,6 +1242,7 @@ a {
   display: flex;
   justify-content: space-between;
   gap: 0.85rem;
+  min-width: 0;
   padding: 0.9rem 1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -1213,6 +1252,17 @@ a {
 .attempt-item > div {
   display: grid;
   gap: 0.3rem;
+  min-width: 0;
+}
+
+.attempt-item strong,
+.attempt-item span,
+.table-primary span,
+.compact-row span,
+.compact-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .loading-state {
@@ -1656,6 +1706,7 @@ a {
 .result-field {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
   padding: 1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -1664,6 +1715,9 @@ a {
 
 .result-field strong {
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .result-message {
