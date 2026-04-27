@@ -2,6 +2,8 @@ import {
   Activity,
   ArrowRight,
   Boxes,
+  ChevronDown,
+  ChevronUp,
   Gauge,
   LoaderCircle,
   ShieldCheck,
@@ -9,6 +11,7 @@ import {
   Waves,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useState } from 'react'
 
 import type { Variants } from 'framer-motion'
 
@@ -33,6 +36,8 @@ import {
 import { useI18n } from '../i18n'
 
 import type { DashboardResponse, MetricsResponse, MetricsWindow, TokenUsageResponse, TrafficPreset } from '../types'
+
+type TokenBreakdownEntry = [string, TokenUsageResponse['providers'][string]]
 
 
 type OverviewViewProps = {
@@ -69,6 +74,11 @@ const itemVariants: Variants = {
   },
 }
 
+function sortTokenBreakdowns(a: TokenBreakdownEntry, b: TokenBreakdownEntry) {
+  const tokenDiff = b[1].total_tokens - a[1].total_tokens
+  return tokenDiff === 0 ? a[0].localeCompare(b[0]) : tokenDiff
+}
+
 export function OverviewView({
   dashboard,
   metrics,
@@ -80,8 +90,16 @@ export function OverviewView({
   onNavigate,
 }: OverviewViewProps) {
   const { locale, messages } = useI18n()
+  const [showTokenProviders, setShowTokenProviders] = useState(false)
+  const [showTokenModels, setShowTokenModels] = useState(false)
   const sortedProviders = sortProviders(dashboard.providers)
   const recentPreview = dashboard.recent_requests.slice(0, 5)
+  const providerTokenEntries = tokenUsage
+    ? Object.entries(tokenUsage.providers).sort(sortTokenBreakdowns)
+    : []
+  const modelTokenEntries = tokenUsage
+    ? Object.entries(tokenUsage.models).sort(sortTokenBreakdowns)
+    : []
   const stateItems = [
     {
       state: 'success' as const,
@@ -198,7 +216,7 @@ export function OverviewView({
           </div>
           <p className="section-copy">{messages.overview.tokenUsageCopy}</p>
 
-          <div className="kpi-grid" style={{ marginTop: '1rem' }}>
+          <div className="kpi-grid token-kpi-grid">
             <article className="kpi-card">
               <span className="surface-label">{messages.overview.totalTokens}</span>
               <strong>{formatCountCompact(tokenUsage.total_tokens)}</strong>
@@ -217,65 +235,116 @@ export function OverviewView({
             </article>
           </div>
 
-          {Object.keys(tokenUsage.providers).length > 0 && (
-            <div style={{ marginTop: '1rem' }}>
-              <span className="surface-label">{messages.overview.tokensByProvider}</span>
-              <div className="snapshot-table-wrap" style={{ marginTop: '0.5rem' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{messages.providers.provider}</th>
-                      <th>{messages.overview.totalTokens}</th>
-                      <th>{messages.overview.inputTokens}</th>
-                      <th>{messages.overview.outputTokens}</th>
-                      <th>{messages.overview.totalRequests}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(tokenUsage.providers).map(([name, stats]) => (
-                      <tr key={name}>
-                        <td><strong>{name}</strong></td>
-                        <td>{formatCountCompact(stats.total_tokens)}</td>
-                        <td>{formatCountCompact(stats.input_tokens)}</td>
-                        <td>{formatCountCompact(stats.output_tokens)}</td>
-                        <td>{formatCountCompact(stats.requests)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          <div className="token-usage-summary">
+            <span>
+              {messages.overview.tokenUsageBreakdownSummary(
+                formatCountCompact(tokenUsage.requests_with_usage),
+                providerTokenEntries.length,
+                modelTokenEntries.length,
+              )}
+            </span>
+            {tokenUsage.updated_at ? (
+              <span>{messages.overview.tokenUsageUpdatedAt}: {formatTimestamp(tokenUsage.updated_at, locale)}</span>
+            ) : null}
+          </div>
 
-          {Object.keys(tokenUsage.models).length > 0 && (
-            <div style={{ marginTop: '1rem' }}>
-              <span className="surface-label">{messages.overview.tokensByModel}</span>
-              <div className="snapshot-table-wrap" style={{ marginTop: '0.5rem' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{messages.providers.models}</th>
-                      <th>{messages.overview.totalTokens}</th>
-                      <th>{messages.overview.inputTokens}</th>
-                      <th>{messages.overview.outputTokens}</th>
-                      <th>{messages.overview.totalRequests}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(tokenUsage.models).map(([name, stats]) => (
-                      <tr key={name}>
-                        <td><strong>{name}</strong></td>
-                        <td>{formatCountCompact(stats.total_tokens)}</td>
-                        <td>{formatCountCompact(stats.input_tokens)}</td>
-                        <td>{formatCountCompact(stats.output_tokens)}</td>
-                        <td>{formatCountCompact(stats.requests)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="token-disclosure-stack">
+            {providerTokenEntries.length > 0 && (
+              <div className="token-disclosure">
+                <div className="token-disclosure-head">
+                  <div>
+                    <span className="surface-label">{messages.overview.tokensByProvider}</span>
+                    <strong>{messages.overview.tokenUsageProviderCount(providerTokenEntries.length)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button token-disclosure-button"
+                    aria-expanded={showTokenProviders}
+                    aria-controls="token-provider-breakdown"
+                    onClick={() => setShowTokenProviders((current) => !current)}
+                  >
+                    {messages.overview.tokenUsageProviderToggle(providerTokenEntries.length, showTokenProviders)}
+                    {showTokenProviders ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                </div>
+
+                {showTokenProviders ? (
+                  <div id="token-provider-breakdown" className="snapshot-table-wrap token-disclosure-panel">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>{messages.providers.provider}</th>
+                          <th>{messages.overview.totalTokens}</th>
+                          <th>{messages.overview.inputTokens}</th>
+                          <th>{messages.overview.outputTokens}</th>
+                          <th>{messages.overview.totalRequests}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {providerTokenEntries.map(([name, stats]) => (
+                          <tr key={name}>
+                            <td><strong>{name}</strong></td>
+                            <td>{formatCountCompact(stats.total_tokens)}</td>
+                            <td>{formatCountCompact(stats.input_tokens)}</td>
+                            <td>{formatCountCompact(stats.output_tokens)}</td>
+                            <td>{formatCountCompact(stats.requests)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          )}
+            )}
+
+            {modelTokenEntries.length > 0 && (
+              <div className="token-disclosure">
+                <div className="token-disclosure-head">
+                  <div>
+                    <span className="surface-label">{messages.overview.tokensByModel}</span>
+                    <strong>{messages.overview.tokenUsageModelCount(modelTokenEntries.length)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button token-disclosure-button"
+                    aria-expanded={showTokenModels}
+                    aria-controls="token-model-breakdown"
+                    onClick={() => setShowTokenModels((current) => !current)}
+                  >
+                    {messages.overview.tokenUsageModelToggle(modelTokenEntries.length, showTokenModels)}
+                    {showTokenModels ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                </div>
+
+                {showTokenModels ? (
+                  <div id="token-model-breakdown" className="snapshot-table-wrap token-disclosure-panel">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>{messages.providers.models}</th>
+                          <th>{messages.overview.totalTokens}</th>
+                          <th>{messages.overview.inputTokens}</th>
+                          <th>{messages.overview.outputTokens}</th>
+                          <th>{messages.overview.totalRequests}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modelTokenEntries.map(([name, stats]) => (
+                          <tr key={name}>
+                            <td><strong>{name}</strong></td>
+                            <td>{formatCountCompact(stats.total_tokens)}</td>
+                            <td>{formatCountCompact(stats.input_tokens)}</td>
+                            <td>{formatCountCompact(stats.output_tokens)}</td>
+                            <td>{formatCountCompact(stats.requests)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </motion.section>
       )}
 

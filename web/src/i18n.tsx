@@ -168,6 +168,14 @@ const enMessages = {
     totalRequests: 'Total requests',
     tokenUsageUpdatedAt: 'Updated at',
     tokenUsageNever: 'No usage recorded yet.',
+    tokenUsageBreakdownSummary: (requestsWithUsage: string | number, providers: number, models: number) =>
+      `${requestsWithUsage} usage-bearing requests across ${providers} provider groups and ${models} model groups.`,
+    tokenUsageProviderCount: (count: number) => `${count} provider groups`,
+    tokenUsageModelCount: (count: number) => `${count} model groups`,
+    tokenUsageProviderToggle: (count: number, expanded: boolean) =>
+      expanded ? `Hide provider details (${count})` : `Show provider details (${count})`,
+    tokenUsageModelToggle: (count: number, expanded: boolean) =>
+      expanded ? `Hide model details (${count})` : `Show model details (${count})`,
     tokensByProvider: 'By provider',
     tokensByModel: 'By model',
   },
@@ -526,6 +534,14 @@ const zhMessages: AppMessages = {
     totalRequests: '总请求数',
     tokenUsageUpdatedAt: '更新时间',
     tokenUsageNever: '尚未记录任何用量。',
+    tokenUsageBreakdownSummary: (requestsWithUsage: string | number, providers: number, models: number) =>
+      `${requestsWithUsage} 条含用量请求，覆盖 ${providers} 个 Provider 分组和 ${models} 个模型分组。`,
+    tokenUsageProviderCount: (count: number) => `${count} 个 Provider 分组`,
+    tokenUsageModelCount: (count: number) => `${count} 个模型分组`,
+    tokenUsageProviderToggle: (count: number, expanded: boolean) =>
+      expanded ? `收起 Provider 明细（${count}）` : `展开 Provider 明细（${count}）`,
+    tokenUsageModelToggle: (count: number, expanded: boolean) =>
+      expanded ? `收起模型明细（${count}）` : `展开模型明细（${count}）`,
     tokensByProvider: '按 Provider',
     tokensByModel: '按模型',
   },

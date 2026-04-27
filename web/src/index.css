@@ -463,6 +463,62 @@ a {
   gap: 0.75rem;
 }
 
+.token-kpi-grid {
+  margin-top: 1rem;
+}
+
+.token-usage-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.token-disclosure-stack {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.token-disclosure {
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.token-disclosure-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.token-disclosure-head > div {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.token-disclosure-head strong {
+  color: var(--text);
+}
+
+.token-disclosure-button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.token-disclosure-panel {
+  margin-top: 0.85rem;
+}
+
 .kpi-head,
 .section-header,
 .toolbar-row,
@@ -1766,7 +1822,8 @@ a {
   .attempt-item,
   .header-actions,
   .provider-health-head,
-  .result-header {
+  .result-header,
+  .token-disclosure-head {
     flex-direction: column;
     align-items: stretch;
   }
