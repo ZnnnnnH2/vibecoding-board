@@ -1603,6 +1603,37 @@ a {
   animation: spin 1s linear infinite;
 }
 
+.floating-refresh-button {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 30;
+  min-height: 48px;
+  padding: 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  transition: transform var(--transition), border-color var(--transition), opacity var(--transition);
+}
+
+.floating-refresh-button:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.floating-refresh-button:disabled {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -1722,6 +1753,11 @@ a {
     right: 1rem;
     bottom: 1rem;
     width: calc(100vw - 2rem);
+  }
+
+  .floating-refresh-button {
+    right: 1rem;
+    bottom: 5.25rem;
   }
 }
 

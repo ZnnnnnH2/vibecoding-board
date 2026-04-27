@@ -151,6 +151,7 @@ export default function App() {
   )
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showFloatingRefresh, setShowFloatingRefresh] = useState(false)
   const [toasts, setToasts] = useState<ToastNotification[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference())
@@ -302,6 +303,16 @@ export default function App() {
       activeRequestControllerRef.current?.abort()
       activeRequestControllerRef.current = null
     }
+  }, [])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingRefresh(window.scrollY > 240)
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   useEffect(() => {
@@ -667,6 +678,21 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {showFloatingRefresh ? (
+        <button
+          type="button"
+          className="floating-refresh-button"
+          onClick={() => {
+            void loadAdminData()
+          }}
+          disabled={loading}
+          aria-label={loading ? messages.app.refreshing : messages.app.refresh}
+        >
+          <RefreshCw size={18} className={loading ? 'spin-icon' : ''} />
+          <span>{loading ? messages.app.refreshing : messages.app.refresh}</span>
+        </button>
+      ) : null}
 
       <ProviderDrawer
         open={drawerMode !== null}
