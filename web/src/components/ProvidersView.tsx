@@ -190,7 +190,10 @@ export function ProvidersView({
                   const health = getHealthState(provider.healthcheck, messages)
                   const stats = findProviderStats(dashboard.stats, provider.name)
                   return (
-                    <tr key={provider.name}>
+                    <tr
+                      key={provider.name}
+                      className={`provider-row ${provider.enabled ? 'provider-row-enabled' : 'provider-row-disabled'}`}
+                    >
                       <td>
                         <div className="table-primary">
                           <div className="table-title-row">

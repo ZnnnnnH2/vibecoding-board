@@ -34,6 +34,10 @@
   --warning: #f59e0b;
   --warning-soft: rgba(245, 158, 11, 0.1);
   --neutral-soft: rgba(148, 163, 184, 0.1);
+  --provider-row-enabled-bg: rgba(16, 185, 129, 0.055);
+  --provider-row-enabled-hover: rgba(16, 185, 129, 0.1);
+  --provider-row-disabled-bg: rgba(148, 163, 184, 0.08);
+  --provider-row-disabled-hover: rgba(148, 163, 184, 0.14);
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
   --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.08), 0 8px 16px rgba(0, 0, 0, 0.04);
   --radius-xl: 24px;
@@ -77,6 +81,10 @@
   --warning: #fbbf24;
   --warning-soft: rgba(251, 191, 36, 0.15);
   --neutral-soft: rgba(148, 163, 184, 0.1);
+  --provider-row-enabled-bg: rgba(52, 211, 153, 0.08);
+  --provider-row-enabled-hover: rgba(52, 211, 153, 0.13);
+  --provider-row-disabled-bg: rgba(71, 85, 105, 0.16);
+  --provider-row-disabled-hover: rgba(71, 85, 105, 0.24);
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4), 0 8px 16px rgba(0, 0, 0, 0.2);
 }
@@ -686,6 +694,30 @@ a {
 
 .data-table tbody tr:hover {
   background: var(--surface-hover);
+}
+
+.providers-table tbody tr.provider-row-enabled {
+  background:
+    linear-gradient(90deg, rgba(16, 185, 129, 0.12), transparent 42%),
+    var(--provider-row-enabled-bg);
+}
+
+.providers-table tbody tr.provider-row-enabled:hover {
+  background:
+    linear-gradient(90deg, rgba(16, 185, 129, 0.18), transparent 46%),
+    var(--provider-row-enabled-hover);
+}
+
+.providers-table tbody tr.provider-row-disabled {
+  background:
+    linear-gradient(90deg, rgba(100, 116, 139, 0.12), transparent 42%),
+    var(--provider-row-disabled-bg);
+}
+
+.providers-table tbody tr.provider-row-disabled:hover {
+  background:
+    linear-gradient(90deg, rgba(100, 116, 139, 0.18), transparent 46%),
+    var(--provider-row-disabled-hover);
 }
 
 .chart-card {
