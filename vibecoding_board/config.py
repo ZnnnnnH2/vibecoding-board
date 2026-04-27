@@ -13,6 +13,7 @@ ENV_PREFIX = "env:"
 PRIORITY_STEP = 10
 DEFAULT_RETRYABLE_STATUS_CODES = (429, 500, 502, 503, 504)
 DEFAULT_PROVIDER_FAILURE_STATUS_CODES = (401, 403)
+DEFAULT_HEALTHCHECK_MODEL = "gpt-5.4"
 
 
 class ConfigError(ValueError):
@@ -44,9 +45,9 @@ class RuntimeProvider:
     def supports_all_models(self) -> bool:
         return "*" in self.models
 
-    def healthcheck_target_model(self) -> str | None:
+    def healthcheck_target_model(self, default_model: str | None = None) -> str | None:
         if self.supports_all_models:
-            return self.healthcheck_model
+            return self.healthcheck_model or default_model
         return self.models[0] if self.models else None
 
 
@@ -98,6 +99,15 @@ class HealthcheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stream: bool = False
+    model: str = DEFAULT_HEALTHCHECK_MODEL
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("model must not be empty")
+        return cleaned
 
 
 class ResponsesWebSocketConfig(BaseModel):
@@ -291,6 +301,7 @@ def dump_example_config() -> dict[str, Any]:
         },
         "healthcheck": {
             "stream": False,
+            "model": DEFAULT_HEALTHCHECK_MODEL,
         },
         "responses_websocket": {
             "enabled": False,

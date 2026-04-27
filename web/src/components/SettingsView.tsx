@@ -103,6 +103,15 @@ export function SettingsView({
     onHealthcheckSubmit(nextForm)
   }
 
+  function commitHealthcheckModel(model: string) {
+    const nextForm = {
+      ...healthcheckForm,
+      model,
+    }
+    onHealthcheckChange(nextForm)
+    onHealthcheckSubmit(nextForm)
+  }
+
   function commitResponsesWebSocketSettings(enabled: boolean) {
     const nextForm = {
       ...responsesWebSocketForm,
@@ -257,6 +266,23 @@ export function SettingsView({
               </div>
 
               <div className="form-hint-panel">
+                <label className="settings-field settings-field-wide">
+                  <span>{messages.settings.healthcheckModel}</span>
+                  <input
+                    value={healthcheckForm.model}
+                    onChange={(event) =>
+                      onHealthcheckChange({
+                        ...healthcheckForm,
+                        model: event.target.value,
+                      })
+                    }
+                    onBlur={(event) => commitHealthcheckModel(event.currentTarget.value)}
+                    placeholder={messages.settings.healthcheckModelPlaceholder}
+                    disabled={settingsBusy}
+                  />
+                  <small className="field-hint">{messages.settings.healthcheckModelHint}</small>
+                </label>
+
                 <span className="meta-label">{messages.settings.healthcheckStream}</span>
                 <label className="checkbox-row">
                   <input

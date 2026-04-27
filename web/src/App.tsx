@@ -94,6 +94,8 @@ const emptyHealthcheck: HealthcheckSummary = {
   error: null,
 }
 
+const defaultHealthcheckModel = 'gpt-5.4'
+
 
 function formFromProvider(provider: ProviderSummary): ProviderFormState {
   return {
@@ -139,6 +141,7 @@ function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicy
 function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): HealthcheckSettingsFormState {
   return {
     stream: dashboard?.healthcheck.stream ?? false,
+    model: dashboard?.healthcheck.model ?? defaultHealthcheckModel,
   }
 }
 
@@ -187,7 +190,7 @@ function healthcheckSettingsFormsEqual(
   left: HealthcheckSettingsFormState,
   right: HealthcheckSettingsFormState,
 ): boolean {
-  return left.stream === right.stream
+  return left.stream === right.stream && left.model === right.model
 }
 
 function responsesWebSocketSettingsFormsEqual(
@@ -543,6 +546,7 @@ export default function App() {
         ...emptyHealthcheck,
         ok: false,
         stream: dashboard?.healthcheck.stream ?? null,
+        model: dashboard?.healthcheck.model ?? null,
         error: error instanceof Error ? error.message : messages.app.actionFailed,
       })
     } finally {

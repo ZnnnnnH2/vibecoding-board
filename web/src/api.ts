@@ -171,6 +171,7 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
 function buildHealthcheckSettingsPayload(form: HealthcheckSettingsFormState) {
   return {
     stream: form.stream,
+    model: form.model.trim() || 'gpt-5.4',
   }
 }
 

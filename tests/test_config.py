@@ -292,3 +292,49 @@ def test_responses_websocket_settings_default_false_and_round_trip_when_enabled(
     assert default_config.responses_websocket.enabled is False
     assert enabled_config.responses_websocket.enabled is True
     assert "responses_websocket:\n  enabled: true" in dump_proxy_config(enabled_config)
+
+
+def test_healthcheck_settings_default_model_is_gpt_5_4_and_round_trips_when_overridden() -> None:
+    default_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+    enabled_config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "healthcheck": {"stream": True, "model": "gpt-5.4"},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+
+    assert default_config.healthcheck.stream is False
+    assert default_config.healthcheck.model == "gpt-5.4"
+    assert enabled_config.healthcheck.stream is True
+    assert enabled_config.healthcheck.model == "gpt-5.4"
+    assert "healthcheck:\n  stream: true\n  model: gpt-5.4" in dump_proxy_config(enabled_config)

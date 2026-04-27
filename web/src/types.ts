@@ -46,6 +46,7 @@ export type HealthcheckSummary = {
 
 export type HealthcheckConfigSummary = {
   stream: boolean
+  model: string
 }
 
 export type ResponsesWebSocketConfigSummary = {
@@ -218,6 +219,7 @@ export type RetryPolicyFormState = {
 
 export type HealthcheckSettingsFormState = {
   stream: boolean
+  model: string
 }
 
 export type ResponsesWebSocketSettingsFormState = {

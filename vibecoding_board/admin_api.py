@@ -124,9 +124,15 @@ class HealthcheckUpdatePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stream: bool
+    model: str | None = None
 
-    def to_healthcheck_config(self) -> HealthcheckConfig:
-        return HealthcheckConfig(stream=self.stream)
+    def to_healthcheck_config(self, existing: HealthcheckConfig | None = None) -> HealthcheckConfig:
+        payload: dict[str, object] = {"stream": self.stream}
+        if self.model is not None:
+            payload["model"] = self.model
+        elif existing is not None:
+            payload["model"] = existing.model
+        return HealthcheckConfig(**payload)
 
 
 class ResponsesWebSocketUpdatePayload(BaseModel):
@@ -212,7 +218,9 @@ def build_admin_router() -> APIRouter:
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
-            await manager.update_healthcheck(payload.to_healthcheck_config())
+            await manager.update_healthcheck(
+                payload.to_healthcheck_config(manager.current().config.healthcheck)
+            )
         except RuntimeMutationError as exc:
             raise HTTPException(
                 status_code=exc.status_code,

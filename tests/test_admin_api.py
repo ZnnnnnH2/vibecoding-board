@@ -186,6 +186,7 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["retry_policy"]["same_provider_retry_count"] == 0
         assert payload["retry_policy"]["retry_interval_ms"] == 0
         assert payload["healthcheck"]["stream"] is False
+        assert payload["healthcheck"]["model"] == "gpt-5.4"
         assert payload["responses_websocket"]["enabled"] is False
         assert all(provider["always_alive"] is False for provider in payload["providers"])
 
@@ -433,17 +434,19 @@ def test_patch_healthcheck_settings_updates_runtime_and_config(workspace_tmp_dir
     with TestClient(app) as client:
         response = client.patch(
             "/admin/api/healthcheck-settings",
-            json={"stream": True},
+            json={"stream": True, "model": "gpt-5.4"},
         )
 
         assert response.status_code == 200
         payload = response.json()["dashboard"]
         assert payload["healthcheck"]["stream"] is True
+        assert payload["healthcheck"]["model"] == "gpt-5.4"
         assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
         assert payload["retry_policy"]["provider_failure_status_codes"] == [401, 403]
 
     saved = load_proxy_config(config_path)
     assert saved.healthcheck.stream is True
+    assert saved.healthcheck.model == "gpt-5.4"
 
 
 def test_patch_responses_websocket_settings_updates_runtime_and_config(
@@ -900,7 +903,7 @@ def test_manual_healthcheck_uses_streaming_mode_when_enabled(workspace_tmp_dir: 
         assert captured_chat_requests[-1]["stream"] is True
 
 
-def test_healthcheck_requires_model_for_wildcard_provider(workspace_tmp_dir: Path) -> None:
+def test_healthcheck_uses_default_model_for_wildcard_provider(workspace_tmp_dir: Path) -> None:
     config = ProxyConfig.model_validate(
         {
             "listen": {"host": "127.0.0.1", "port": 9000},
@@ -924,5 +927,8 @@ def test_healthcheck_requires_model_for_wildcard_provider(workspace_tmp_dir: Pat
     with TestClient(app) as client:
         response = client.post("/admin/api/providers/relay_any/healthcheck")
 
-        assert response.status_code == 400
-        assert "healthcheck_model" in response.json()["detail"]
+        assert response.status_code == 200
+        payload = response.json()["dashboard"]
+        provider = next(item for item in payload["providers"] if item["name"] == "relay_any")
+        assert provider["healthcheck"]["ok"] is True
+        assert provider["healthcheck"]["model"] == "gpt-5.4"

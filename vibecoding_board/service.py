@@ -679,7 +679,7 @@ class ProxyService:
         except ConfigError as exc:
             raise RuntimeMutationError(str(exc)) from exc
 
-        model = runtime_provider.healthcheck_target_model()
+        model = runtime_provider.healthcheck_target_model(runtime.config.healthcheck.model)
         if not model:
             raise RuntimeMutationError(
                 f"Provider {provider_name!r} needs 'healthcheck_model' because it is configured with wildcard models.",
