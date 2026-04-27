@@ -177,6 +177,7 @@ listen:
 
 retry_policy:
   retryable_status_codes: [429, 500, 502, 503, 504]
+  provider_failure_status_codes: [401, 403]
   same_provider_retry_count: 0     # 同 provider 额外重试次数
   retry_interval_ms: 0             # 同 provider 重试间隔
 

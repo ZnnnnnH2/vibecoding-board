@@ -129,6 +129,7 @@ function createProviderForm(dashboard: DashboardResponse | null): ProviderFormSt
 function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicyFormState {
   return {
     retryableStatusCodes: dashboard?.retry_policy.retryable_status_codes.join(', ') ?? '429, 500, 502, 503, 504',
+    providerFailureStatusCodes: dashboard?.retry_policy.provider_failure_status_codes.join(', ') ?? '401, 403',
     sameProviderRetryCount: String(dashboard?.retry_policy.same_provider_retry_count ?? 0),
     retryIntervalMs: String(dashboard?.retry_policy.retry_interval_ms ?? 0),
   }
@@ -176,6 +177,7 @@ function retryPolicyFormsEqual(
 ): boolean {
   return (
     left.retryableStatusCodes === right.retryableStatusCodes &&
+    left.providerFailureStatusCodes === right.providerFailureStatusCodes &&
     left.sameProviderRetryCount === right.sameProviderRetryCount &&
     left.retryIntervalMs === right.retryIntervalMs
   )

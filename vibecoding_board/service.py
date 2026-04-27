@@ -69,7 +69,6 @@ TERMINAL_RESPONSE_EVENT_TYPES = {"response.completed", "response.failed", "error
 # Only persistent "protocol not supported" signals mark a provider as ws-unsupported.
 # Transient 5xx are treated as retryable failures instead.
 WS_UNSUPPORTED_STATUS_CODES = {400, 403, 404, 405, 426}
-PROVIDER_FAILURE_STATUS_CODES = {401, 403}
 TURN_STATE_HEADER = "x-codex-turn-state"
 TURN_METADATA_CLIENT_KEY = "x-codex-turn-metadata"
 REQUEST_LOG_ACTIVITY_TOUCH_INTERVAL_SECONDS = 5.0
@@ -252,8 +251,8 @@ def classify_status(status_code: int, retryable_status_codes: set[int]) -> str:
     return "non_retryable"
 
 
-def is_provider_failure_status(status_code: int) -> bool:
-    return status_code in PROVIDER_FAILURE_STATUS_CODES
+def is_provider_failure_status(status_code: int, provider_failure_status_codes: set[int]) -> bool:
+    return status_code in provider_failure_status_codes
 
 
 def provider_failure_reason(status_code: int, error: str | None) -> str:
@@ -1029,6 +1028,7 @@ class ProxyService:
         previous_response_id = self._extract_previous_response_id(request_payload)
         sticky = previous_response_id is not None or turn_state_entry.provider_name is not None
         attempts: list[AttemptResult] = []
+        provider_failure_status_codes = runtime.config.retry_policy.provider_failure_status_set()
 
         try:
             candidates = await self._select_responses_websocket_candidates(
@@ -1194,7 +1194,7 @@ class ProxyService:
                 elif (
                     result.state == "error"
                     and result.status_code is not None
-                    and is_provider_failure_status(result.status_code)
+                    and is_provider_failure_status(result.status_code, provider_failure_status_codes)
                 ):
                     await runtime.registry.mark_retryable_failure(
                         provider.name,
@@ -1888,6 +1888,7 @@ class ProxyService:
     ) -> Response:
         attempts: list[AttemptResult] = []
         retryable_status_codes = retry_policy.retryable_status_set()
+        provider_failure_status_codes = retry_policy.provider_failure_status_set()
         max_same_provider_attempts = retry_policy.same_provider_retry_count + 1
         for provider in candidates:
             headers = build_upstream_headers(incoming_headers, provider)
@@ -1957,7 +1958,7 @@ class ProxyService:
                             provider_name=provider.name,
                             southbound_transport="http",
                         )
-                elif is_provider_failure_status(response.status_code):
+                elif is_provider_failure_status(response.status_code, provider_failure_status_codes):
                     await registry.mark_retryable_failure(
                         provider.name,
                         provider_failure_reason(response.status_code, error),
@@ -2027,6 +2028,7 @@ class ProxyService:
     ) -> Response:
         attempts: list[AttemptResult] = []
         retryable_status_codes = retry_policy.retryable_status_set()
+        provider_failure_status_codes = retry_policy.provider_failure_status_set()
         max_same_provider_attempts = retry_policy.same_provider_retry_count + 1
         for provider in candidates:
             url = build_upstream_url(provider, path)
@@ -2093,7 +2095,7 @@ class ProxyService:
                         body_bytes,
                         response.status_code,
                     )
-                    if is_provider_failure_status(response.status_code):
+                    if is_provider_failure_status(response.status_code, provider_failure_status_codes):
                         await registry.mark_retryable_failure(
                             provider.name,
                             provider_failure_reason(response.status_code, error),

@@ -158,6 +158,21 @@ export function SettingsView({
                   <small className="field-hint">{messages.settings.retryableStatusCodesHint}</small>
                 </label>
 
+                <label className="settings-field settings-field-wide">
+                  <span>{messages.settings.providerFailureStatusCodes}</span>
+                  <textarea
+                    rows={3}
+                    value={retryPolicyForm.providerFailureStatusCodes}
+                    onChange={(event) => updateRetryPolicy('providerFailureStatusCodes', event.target.value)}
+                    onBlur={(event) =>
+                      commitRetryPolicy('providerFailureStatusCodes', event.currentTarget.value)
+                    }
+                    placeholder={messages.settings.providerFailureStatusCodesPlaceholder}
+                    disabled={settingsBusy}
+                  />
+                  <small className="field-hint">{messages.settings.providerFailureStatusCodesHint}</small>
+                </label>
+
                 <label className="settings-field">
                   <span>{messages.settings.sameProviderRetryCount}</span>
                   <input
@@ -275,6 +290,7 @@ export function SettingsView({
 
               <ul className="note-list">
                 <li>{messages.settings.noteSameProviderFirst}</li>
+                <li>{messages.settings.noteProviderFailureCounts}</li>
                 <li>{messages.settings.noteFailoverAfterExhausted}</li>
                 <li>{messages.settings.noteCoolingAfterExhausted}</li>
                 <li>{messages.settings.noteStreamingBoundary}</li>

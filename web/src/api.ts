@@ -132,8 +132,8 @@ function buildProviderPayload(form: ProviderFormState) {
 }
 
 
-function buildRetryPolicyPayload(form: RetryPolicyFormState) {
-  const rawTokens = form.retryableStatusCodes
+function parseStatusCodes(value: string): number[] {
+  const rawTokens = value
     .split(/[\s,]+/)
     .map((value) => value.trim())
     .filter(Boolean)
@@ -143,7 +143,12 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
     throw new Error(localMessage(`Invalid status code: ${invalidToken}`, `无效状态码：${invalidToken}`))
   }
 
-  const retryableStatusCodes = rawTokens.map((token) => Number.parseInt(token, 10))
+  return rawTokens.map((token) => Number.parseInt(token, 10))
+}
+
+function buildRetryPolicyPayload(form: RetryPolicyFormState) {
+  const retryableStatusCodes = parseStatusCodes(form.retryableStatusCodes)
+  const providerFailureStatusCodes = parseStatusCodes(form.providerFailureStatusCodes)
   const sameProviderRetryCount = Number.parseInt(form.sameProviderRetryCount, 10)
   const retryIntervalMs = Number.parseInt(form.retryIntervalMs, 10)
 
@@ -156,6 +161,7 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
 
   return {
     retryable_status_codes: retryableStatusCodes,
+    provider_failure_status_codes: providerFailureStatusCodes,
     same_provider_retry_count: sameProviderRetryCount,
     retry_interval_ms: retryIntervalMs,
   }

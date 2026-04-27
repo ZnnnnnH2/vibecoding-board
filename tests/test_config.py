@@ -59,6 +59,7 @@ def test_retry_policy_status_codes_are_normalized() -> None:
             "listen": {"host": "127.0.0.1", "port": 9000},
             "retry_policy": {
                 "retryable_status_codes": [503, 500, 503, 429],
+                "provider_failure_status_codes": [403, 401, 403],
                 "same_provider_retry_count": 2,
                 "retry_interval_ms": 300,
             },
@@ -79,6 +80,30 @@ def test_retry_policy_status_codes_are_normalized() -> None:
     )
 
     assert config.retry_policy.retryable_status_codes == [429, 500, 503]
+    assert config.retry_policy.provider_failure_status_codes == [401, 403]
+
+
+def test_retry_policy_provider_failure_status_codes_default_to_auth_failures() -> None:
+    config = ProxyConfig.model_validate(
+        {
+            "listen": {"host": "127.0.0.1", "port": 9000},
+            "providers": [
+                {
+                    "name": "relay_a",
+                    "base_url": "https://relay-a.example.com/v1",
+                    "api_key": "key-a",
+                    "enabled": True,
+                    "priority": 10,
+                    "models": ["gpt-4.1"],
+                    "timeout_seconds": 10,
+                    "max_failures": 2,
+                    "cooldown_seconds": 30,
+                }
+            ],
+        }
+    )
+
+    assert config.retry_policy.provider_failure_status_codes == [401, 403]
 
 
 def test_retry_policy_rejects_invalid_status_code() -> None:
@@ -88,6 +113,34 @@ def test_retry_policy_rejects_invalid_status_code() -> None:
                 "listen": {"host": "127.0.0.1", "port": 9000},
                 "retry_policy": {
                     "retryable_status_codes": [200, 503],
+                    "same_provider_retry_count": 1,
+                    "retry_interval_ms": 100,
+                },
+                "providers": [
+                    {
+                        "name": "relay_a",
+                        "base_url": "https://relay-a.example.com/v1",
+                        "api_key": "key-a",
+                        "enabled": True,
+                        "priority": 10,
+                        "models": ["gpt-4.1"],
+                        "timeout_seconds": 10,
+                        "max_failures": 2,
+                        "cooldown_seconds": 30,
+                    }
+                ],
+            }
+        )
+
+
+def test_retry_policy_rejects_invalid_provider_failure_status_code() -> None:
+    with pytest.raises(ValueError, match="provider_failure_status_codes"):
+        ProxyConfig.model_validate(
+            {
+                "listen": {"host": "127.0.0.1", "port": 9000},
+                "retry_policy": {
+                    "retryable_status_codes": [503],
+                    "provider_failure_status_codes": [403, 200],
                     "same_provider_retry_count": 1,
                     "retry_interval_ms": 100,
                 },

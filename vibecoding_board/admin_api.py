@@ -103,15 +103,21 @@ class RetryPolicyUpdatePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     retryable_status_codes: list[int]
+    provider_failure_status_codes: list[int] | None = None
     same_provider_retry_count: int = Field(ge=0)
     retry_interval_ms: int = Field(ge=0)
 
-    def to_retry_policy_config(self) -> RetryPolicyConfig:
-        return RetryPolicyConfig(
-            retryable_status_codes=self.retryable_status_codes,
-            same_provider_retry_count=self.same_provider_retry_count,
-            retry_interval_ms=self.retry_interval_ms,
-        )
+    def to_retry_policy_config(self, existing: RetryPolicyConfig | None = None) -> RetryPolicyConfig:
+        payload = {
+            "retryable_status_codes": self.retryable_status_codes,
+            "same_provider_retry_count": self.same_provider_retry_count,
+            "retry_interval_ms": self.retry_interval_ms,
+        }
+        if self.provider_failure_status_codes is not None:
+            payload["provider_failure_status_codes"] = self.provider_failure_status_codes
+        elif existing is not None:
+            payload["provider_failure_status_codes"] = existing.provider_failure_status_codes
+        return RetryPolicyConfig(**payload)
 
 
 class HealthcheckUpdatePayload(BaseModel):
@@ -186,7 +192,9 @@ def build_admin_router() -> APIRouter:
         manager = get_manager(request)
         request_log_store = get_request_log_store(request)
         try:
-            await manager.update_retry_policy(payload.to_retry_policy_config())
+            await manager.update_retry_policy(
+                payload.to_retry_policy_config(manager.current().config.retry_policy)
+            )
         except RuntimeMutationError as exc:
             raise HTTPException(
                 status_code=exc.status_code,

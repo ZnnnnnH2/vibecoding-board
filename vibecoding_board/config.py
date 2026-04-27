@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ENV_PREFIX = "env:"
 PRIORITY_STEP = 10
 DEFAULT_RETRYABLE_STATUS_CODES = (429, 500, 502, 503, 504)
+DEFAULT_PROVIDER_FAILURE_STATUS_CODES = (401, 403)
 
 
 class ConfigError(ValueError):
@@ -62,20 +63,35 @@ class RetryPolicyConfig(BaseModel):
     retryable_status_codes: list[int] = Field(
         default_factory=lambda: list(DEFAULT_RETRYABLE_STATUS_CODES)
     )
+    provider_failure_status_codes: list[int] = Field(
+        default_factory=lambda: list(DEFAULT_PROVIDER_FAILURE_STATUS_CODES)
+    )
     same_provider_retry_count: int = Field(default=0, ge=0)
     retry_interval_ms: int = Field(default=0, ge=0)
 
     @field_validator("retryable_status_codes")
     @classmethod
     def normalize_retryable_status_codes(cls, value: list[int]) -> list[int]:
+        return cls._normalize_status_codes(value, "retryable_status_codes")
+
+    @field_validator("provider_failure_status_codes")
+    @classmethod
+    def normalize_provider_failure_status_codes(cls, value: list[int]) -> list[int]:
+        return cls._normalize_status_codes(value, "provider_failure_status_codes")
+
+    @staticmethod
+    def _normalize_status_codes(value: list[int], field_name: str) -> list[int]:
         normalized = sorted({int(status_code) for status_code in value})
         invalid = [status_code for status_code in normalized if status_code < 400 or status_code > 599]
         if invalid:
-            raise ValueError("retryable_status_codes must contain only HTTP status codes from 400 to 599")
+            raise ValueError(f"{field_name} must contain only HTTP status codes from 400 to 599")
         return normalized
 
     def retryable_status_set(self) -> set[int]:
         return set(self.retryable_status_codes)
+
+    def provider_failure_status_set(self) -> set[int]:
+        return set(self.provider_failure_status_codes)
 
 
 class HealthcheckConfig(BaseModel):
@@ -269,6 +285,7 @@ def dump_example_config() -> dict[str, Any]:
         "listen": {"host": "127.0.0.1", "port": 9000},
         "retry_policy": {
             "retryable_status_codes": list(DEFAULT_RETRYABLE_STATUS_CODES),
+            "provider_failure_status_codes": list(DEFAULT_PROVIDER_FAILURE_STATUS_CODES),
             "same_provider_retry_count": 0,
             "retry_interval_ms": 0,
         },

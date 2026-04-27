@@ -41,12 +41,14 @@ Add a new config section:
 ```yaml
 retry_policy:
   retryable_status_codes: [429, 500, 502, 503, 504]
+  provider_failure_status_codes: [401, 403]
   same_provider_retry_count: 0
   retry_interval_ms: 0
 ```
 
 Fields:
 - `retryable_status_codes`: list of HTTP status codes that trigger same-provider retry
+- `provider_failure_status_codes`: list of HTTP status codes that count toward provider cooldown without same-provider retry
 - `same_provider_retry_count`: number of extra attempts after the initial response from the current provider
 - `retry_interval_ms`: wait time between same-provider retries
 
@@ -67,7 +69,7 @@ For each candidate provider:
 
 1. send the request
 2. if the response is successful, return it immediately
-3. if the response is non-retryable, return it immediately
+3. if the response is non-retryable, count it as a provider failure when it matches `provider_failure_status_codes`, then return it immediately
 4. if the response status code is retryable:
    - record an attempt entry
    - if same-provider retry budget remains, sleep for `retry_interval_ms` and retry the same provider

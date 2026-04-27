@@ -15,6 +15,11 @@ retry_policy:
     - 502
     - 503
     - 504
+  # Statuses counted as provider failures without same-provider retry.
+  # 不触发同 Provider 重试，但会累计 Provider 失败并可能触发冷却的状态码。
+  provider_failure_status_codes:
+    - 401
+    - 403
   same_provider_retry_count: 0
   retry_interval_ms: 0
 

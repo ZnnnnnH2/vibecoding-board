@@ -182,6 +182,7 @@ def test_dashboard_redacts_api_keys(workspace_tmp_dir: Path) -> None:
         assert payload["stats"]["providers"][0]["total_tokens"] == 9
         assert payload["stats"]["global"]["total_tokens"] == 9
         assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
+        assert payload["retry_policy"]["provider_failure_status_codes"] == [401, 403]
         assert payload["retry_policy"]["same_provider_retry_count"] == 0
         assert payload["retry_policy"]["retry_interval_ms"] == 0
         assert payload["healthcheck"]["stream"] is False
@@ -403,6 +404,7 @@ def test_patch_retry_policy_updates_runtime_and_config(workspace_tmp_dir: Path) 
             "/admin/api/retry-policy",
             json={
                 "retryable_status_codes": [500, 503, 521, 522, 523, 524],
+                "provider_failure_status_codes": [403, 401, 423],
                 "same_provider_retry_count": 2,
                 "retry_interval_ms": 250,
             },
@@ -411,12 +413,14 @@ def test_patch_retry_policy_updates_runtime_and_config(workspace_tmp_dir: Path) 
         assert response.status_code == 200
         payload = response.json()["dashboard"]
         assert payload["retry_policy"]["retryable_status_codes"] == [500, 503, 521, 522, 523, 524]
+        assert payload["retry_policy"]["provider_failure_status_codes"] == [401, 403, 423]
         assert payload["retry_policy"]["same_provider_retry_count"] == 2
         assert payload["retry_policy"]["retry_interval_ms"] == 250
         assert payload["healthcheck"]["stream"] is False
 
     saved = load_proxy_config(config_path)
     assert saved.retry_policy.retryable_status_codes == [500, 503, 521, 522, 523, 524]
+    assert saved.retry_policy.provider_failure_status_codes == [401, 403, 423]
     assert saved.retry_policy.same_provider_retry_count == 2
     assert saved.retry_policy.retry_interval_ms == 250
     assert saved.healthcheck.stream is False
@@ -436,6 +440,7 @@ def test_patch_healthcheck_settings_updates_runtime_and_config(workspace_tmp_dir
         payload = response.json()["dashboard"]
         assert payload["healthcheck"]["stream"] is True
         assert payload["retry_policy"]["retryable_status_codes"] == [429, 500, 502, 503, 504]
+        assert payload["retry_policy"]["provider_failure_status_codes"] == [401, 403]
 
     saved = load_proxy_config(config_path)
     assert saved.healthcheck.stream is True

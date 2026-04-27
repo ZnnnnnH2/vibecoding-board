@@ -106,6 +106,7 @@ export type DashboardResponse = {
 
 export type RetryPolicySummary = {
   retryable_status_codes: number[]
+  provider_failure_status_codes: number[]
   same_provider_retry_count: number
   retry_interval_ms: number
 }
@@ -210,6 +211,7 @@ export type ProviderFormState = {
 
 export type RetryPolicyFormState = {
   retryableStatusCodes: string
+  providerFailureStatusCodes: string
   sameProviderRetryCount: string
   retryIntervalMs: string
 }

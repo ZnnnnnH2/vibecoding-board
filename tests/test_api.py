@@ -326,6 +326,44 @@ def test_responses_provider_enters_cooldown_after_repeated_403(workspace_tmp_dir
     assert dashboard["recent_requests"][0]["final_provider"] == "relay_b"
 
 
+def test_responses_provider_failure_status_codes_are_configurable(workspace_tmp_dir: Path) -> None:
+    app = create_app(
+        write_config(
+            workspace_tmp_dir,
+            build_config(
+                retry_policy={
+                    "retryable_status_codes": [429, 500, 502, 503, 504],
+                    "provider_failure_status_codes": [],
+                    "same_provider_retry_count": 0,
+                    "retry_interval_ms": 0,
+                }
+            ),
+        ),
+        transport=httpx.ASGITransport(app=build_upstream_app()),
+    )
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        second = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        third = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        dashboard = client.get("/admin/api/dashboard").json()
+
+    assert [first.status_code, second.status_code, third.status_code] == [403, 403, 403]
+    relay_a = next(provider for provider in dashboard["providers"] if provider["name"] == "relay_a")
+    assert relay_a["consecutive_failures"] == 0
+    assert relay_a["cooldown_until"] is None
+    assert dashboard["recent_requests"][0]["final_provider"] == "relay_a"
+
+
 def test_invalid_json_returns_openai_style_error(workspace_tmp_dir: Path) -> None:
     app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
 
