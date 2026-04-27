@@ -69,6 +69,7 @@ TERMINAL_RESPONSE_EVENT_TYPES = {"response.completed", "response.failed", "error
 # Only persistent "protocol not supported" signals mark a provider as ws-unsupported.
 # Transient 5xx are treated as retryable failures instead.
 WS_UNSUPPORTED_STATUS_CODES = {400, 403, 404, 405, 426}
+PROVIDER_FAILURE_STATUS_CODES = {401, 403}
 TURN_STATE_HEADER = "x-codex-turn-state"
 TURN_METADATA_CLIENT_KEY = "x-codex-turn-metadata"
 REQUEST_LOG_ACTIVITY_TOUCH_INTERVAL_SECONDS = 5.0
@@ -249,6 +250,16 @@ def classify_status(status_code: int, retryable_status_codes: set[int]) -> str:
     if status_code in retryable_status_codes:
         return "retryable"
     return "non_retryable"
+
+
+def is_provider_failure_status(status_code: int) -> bool:
+    return status_code in PROVIDER_FAILURE_STATUS_CODES
+
+
+def provider_failure_reason(status_code: int, error: str | None) -> str:
+    if error:
+        return f"provider status {status_code}: {error}"
+    return f"provider status {status_code}"
 
 
 class ManagedUpstreamWebSocketSession:
@@ -1180,6 +1191,15 @@ class ProxyService:
                         provider.name,
                         result.error or "interrupted",
                     )
+                elif (
+                    result.state == "error"
+                    and result.status_code is not None
+                    and is_provider_failure_status(result.status_code)
+                ):
+                    await runtime.registry.mark_retryable_failure(
+                        provider.name,
+                        provider_failure_reason(result.status_code, result.error),
+                    )
                 await self._finalize_request(
                     log_id,
                     model=model,
@@ -1937,6 +1957,11 @@ class ProxyService:
                             provider_name=provider.name,
                             southbound_transport="http",
                         )
+                elif is_provider_failure_status(response.status_code):
+                    await registry.mark_retryable_failure(
+                        provider.name,
+                        provider_failure_reason(response.status_code, error),
+                    )
                 await self._finalize_request(
                     log_id,
                     model=model,
@@ -2064,6 +2089,15 @@ class ProxyService:
                     await response.aclose()
                     duration_ms = int((perf_counter() - started_at) * 1000)
                     usage = self._extract_usage_from_bytes(body_bytes)
+                    error = self._extract_upstream_error_message_from_bytes(
+                        body_bytes,
+                        response.status_code,
+                    )
+                    if is_provider_failure_status(response.status_code):
+                        await registry.mark_retryable_failure(
+                            provider.name,
+                            provider_failure_reason(response.status_code, error),
+                        )
                     await self._finalize_request(
                         log_id,
                         model=model,
@@ -2075,7 +2109,7 @@ class ProxyService:
                         duration_ms=duration_ms,
                         ttfb_ms=duration_ms,
                         state="error",
-                        error=self._extract_upstream_error_message(response),
+                        error=error,
                         usage=usage,
                         attempts=self._to_attempt_logs(attempts),
                     )

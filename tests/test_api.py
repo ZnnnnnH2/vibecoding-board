@@ -124,7 +124,10 @@ def build_upstream_app() -> FastAPI:
 
     @app.post("/v1/responses")
     async def responses(request: Request):
+        host = request.url.hostname
         payload = await request.json()
+        if payload.get("input") == "forbidden" and host == "relay-a.example.com":
+            return JSONResponse(status_code=403, content={"error": {"message": "provider blocked"}})
         return JSONResponse(
             {
                 "id": "resp-test",
@@ -296,6 +299,33 @@ def test_responses_endpoint_proxies_successfully(workspace_tmp_dir: Path) -> Non
         assert payload["model"] == "gpt-4.1"
 
 
+def test_responses_provider_enters_cooldown_after_repeated_403(workspace_tmp_dir: Path) -> None:
+    app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        second = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        third = client.post(
+            "/v1/responses",
+            json={"model": "gpt-4.1", "input": "forbidden"},
+        )
+        dashboard = client.get("/admin/api/dashboard").json()
+
+    assert first.status_code == 403
+    assert second.status_code == 403
+    assert third.status_code == 200
+    relay_a = next(provider for provider in dashboard["providers"] if provider["name"] == "relay_a")
+    assert relay_a["consecutive_failures"] == 2
+    assert relay_a["cooldown_until"] is not None
+    assert dashboard["recent_requests"][0]["final_provider"] == "relay_b"
+
+
 def test_invalid_json_returns_openai_style_error(workspace_tmp_dir: Path) -> None:
     app = create_app(write_config(workspace_tmp_dir), transport=httpx.ASGITransport(app=build_upstream_app()))
 
@@ -329,6 +359,9 @@ def test_non_stream_non_retryable_response_is_logged_as_error(workspace_tmp_dir:
     assert dashboard["stats"]["global"]["served_requests"] == 1
     assert dashboard["stats"]["global"]["successful_requests"] == 0
     assert dashboard["stats"]["global"]["success_rate"] == 0.0
+    relay_a = next(provider for provider in dashboard["providers"] if provider["name"] == "relay_a")
+    assert relay_a["consecutive_failures"] == 1
+    assert relay_a["cooldown_until"] is None
     states = {item["state"]: item["count"] for item in metrics["breakdowns"]["states"]}
     assert states["success"] == 0
     assert states["error"] == 1
@@ -353,6 +386,9 @@ def test_stream_non_retryable_response_is_logged_as_error_before_stream_starts(w
     assert dashboard["recent_requests"][0]["state"] == "error"
     assert dashboard["stats"]["global"]["served_requests"] == 1
     assert dashboard["stats"]["global"]["successful_requests"] == 0
+    relay_a = next(provider for provider in dashboard["providers"] if provider["name"] == "relay_a")
+    assert relay_a["consecutive_failures"] == 1
+    assert relay_a["cooldown_until"] is None
     states = {item["state"]: item["count"] for item in metrics["breakdowns"]["states"]}
     assert states["success"] == 0
     assert states["error"] == 1
