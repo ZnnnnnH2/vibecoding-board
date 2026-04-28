@@ -1,4 +1,4 @@
-import { Search, SlidersHorizontal } from 'lucide-react'
+import { Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { motion } from 'framer-motion'
 
@@ -126,6 +126,7 @@ export function ProvidersView({
             <h2>{messages.providers.title}</h2>
           </div>
           <button type="button" className="accent-button" onClick={onCreate}>
+            <Plus size={16} />
             {messages.app.addProvider}
           </button>
         </div>

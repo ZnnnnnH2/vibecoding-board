@@ -102,16 +102,16 @@ export function ProviderDrawer({
                 <span className="eyebrow">{mode === 'create' ? messages.drawer.newUpstream : messages.drawer.editUpstream}</span>
                 <h2>{mode === 'create' ? messages.drawer.addProvider : messages.drawer.refineProviderDetails}</h2>
               </div>
-              <button type="button" className="ghost-button" onClick={onClose} disabled={busy} style={{ width: '42px', height: '42px', padding: 0 }}>
+              <button type="button" className="ghost-button drawer-close-button" onClick={onClose} disabled={busy}>
                 <X size={20} />
               </button>
             </div>
 
             <form className="drawer-form" onSubmit={handleSubmit}>
               <section className="drawer-section">
-                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
-                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <Network size={20} style={{ color: 'var(--accent)' }} />
+                <div className="drawer-section-header drawer-section-title-row">
+                  <div className="drawer-section-icon">
+                    <Network size={20} />
                   </div>
                   <div>
                     <span className="eyebrow">{messages.drawer.identityEyebrow}</span>
@@ -198,9 +198,9 @@ export function ProviderDrawer({
               </section>
 
               <section className="drawer-section">
-                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
-                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <Route size={20} style={{ color: 'var(--accent)' }} />
+                <div className="drawer-section-header drawer-section-title-row">
+                  <div className="drawer-section-icon">
+                    <Route size={20} />
                   </div>
                   <div>
                     <span className="eyebrow">{messages.drawer.routingEyebrow}</span>
@@ -281,9 +281,9 @@ export function ProviderDrawer({
               </section>
 
               <section className="drawer-section">
-                <div className="drawer-section-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
-                  <div style={{ flexShrink: 0, padding: '0.5rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <ShieldAlert size={20} style={{ color: 'var(--accent)' }} />
+                <div className="drawer-section-header drawer-section-title-row">
+                  <div className="drawer-section-icon">
+                    <ShieldAlert size={20} />
                   </div>
                   <div>
                     <span className="eyebrow">{messages.drawer.reliabilityEyebrow}</span>
