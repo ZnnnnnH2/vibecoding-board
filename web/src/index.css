@@ -1009,6 +1009,48 @@ a {
   min-width: 0;
 }
 
+.traffic-row-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.mini-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 0.52rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--neutral-soft);
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mini-chip-amber {
+  border-color: color-mix(in srgb, var(--warning) 25%, var(--border));
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.mini-chip-blue {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mini-chip-rose {
+  border-color: color-mix(in srgb, var(--danger) 25%, var(--border));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .priority-editor {
   display: grid;
   gap: 0.45rem;
@@ -1216,10 +1258,66 @@ a {
   gap: 1rem;
 }
 
+.traffic-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.traffic-detail-header > div {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.traffic-detail-header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.traffic-copy-button {
+  min-height: 38px;
+  flex: 0 0 auto;
+}
+
 .expanded-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.routing-trace-block {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.routing-trace-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.routing-trace-item {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.routing-trace-item span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.routing-trace-item strong {
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .expanded-columns {
@@ -1856,6 +1954,7 @@ a {
   .donut-layout,
   .expanded-grid,
   .expanded-columns,
+  .routing-trace-grid,
   .result-grid,
   .settings-layout,
   .settings-grid,
@@ -1874,6 +1973,7 @@ a {
 
   .compact-row,
   .attempt-item,
+  .traffic-detail-header,
   .header-actions,
   .provider-health-head,
   .result-header,

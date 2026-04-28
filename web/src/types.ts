@@ -6,6 +6,9 @@ export type RequestAttempt = {
   status_code: number | null
   provider_attempt: number
   next_action: 'retry_same_provider' | 'failover_next_provider' | 'return_to_client'
+  transport: string
+  sticky: boolean
+  fallback_reason: string | null
 }
 
 export type UsageSummary = {
@@ -21,6 +24,12 @@ export type RecentRequest = {
   request_kind: string
   model: string
   stream: boolean
+  northbound_transport: string
+  southbound_transport: string | null
+  sticky_provider: string | null
+  fallback_reason: string | null
+  turn_state_token_present: boolean
+  turn_state_status: string | null
   final_provider: string | null
   final_url: string | null
   status_code: number | null
