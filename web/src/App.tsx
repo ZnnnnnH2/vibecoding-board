@@ -95,6 +95,13 @@ const emptyHealthcheck: HealthcheckSummary = {
 }
 
 const defaultHealthcheckModel = 'gpt-5.4'
+const defaultRetryableStatusCodes = [429, 500, 502, 503, 504]
+const defaultProviderFailureStatusCodes = [401, 403]
+
+
+function formatStatusCodes(value: unknown, fallback: number[]): string {
+  return (Array.isArray(value) ? value : fallback).join(', ')
+}
 
 
 function formFromProvider(provider: ProviderSummary): ProviderFormState {
@@ -130,18 +137,24 @@ function createProviderForm(dashboard: DashboardResponse | null): ProviderFormSt
 
 function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicyFormState {
   return {
-    retryableStatusCodes: dashboard?.retry_policy.retryable_status_codes.join(', ') ?? '429, 500, 502, 503, 504',
-    providerFailureStatusCodes: dashboard?.retry_policy.provider_failure_status_codes.join(', ') ?? '401, 403',
-    sameProviderRetryCount: String(dashboard?.retry_policy.same_provider_retry_count ?? 0),
-    retryIntervalMs: String(dashboard?.retry_policy.retry_interval_ms ?? 0),
+    retryableStatusCodes: formatStatusCodes(
+      dashboard?.retry_policy?.retryable_status_codes,
+      defaultRetryableStatusCodes,
+    ),
+    providerFailureStatusCodes: formatStatusCodes(
+      dashboard?.retry_policy?.provider_failure_status_codes,
+      defaultProviderFailureStatusCodes,
+    ),
+    sameProviderRetryCount: String(dashboard?.retry_policy?.same_provider_retry_count ?? 0),
+    retryIntervalMs: String(dashboard?.retry_policy?.retry_interval_ms ?? 0),
   }
 }
 
 
 function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): HealthcheckSettingsFormState {
   return {
-    stream: dashboard?.healthcheck.stream ?? false,
-    model: dashboard?.healthcheck.model ?? defaultHealthcheckModel,
+    stream: dashboard?.healthcheck?.stream ?? false,
+    model: dashboard?.healthcheck?.model ?? defaultHealthcheckModel,
   }
 }
 
@@ -149,7 +162,7 @@ function createResponsesWebSocketSettingsForm(
   dashboard: DashboardResponse | null,
 ): ResponsesWebSocketSettingsFormState {
   return {
-    enabled: dashboard?.responses_websocket.enabled ?? false,
+    enabled: dashboard?.responses_websocket?.enabled ?? false,
   }
 }
 
