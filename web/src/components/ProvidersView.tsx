@@ -1,6 +1,6 @@
 import { Plus, Search, SlidersHorizontal } from 'lucide-react'
-import { useDeferredValue, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useDeferredValue, useState, useMemo, memo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import type { Variants } from 'framer-motion'
 
@@ -17,6 +17,7 @@ import {
   sortProviders,
 } from '../format'
 import { useI18n } from '../i18n'
+import type { AppMessages } from '../i18n'
 
 import { DropdownSelect } from './DropdownSelect'
 
@@ -65,34 +66,36 @@ const itemVariants: Variants = {
   },
 }
 
-export function ProvidersView({
+const ProviderRow = memo(function ProviderRow({
+  provider,
   dashboard,
+  messages,
+  locale,
   busyAction,
-  onCreate,
+  onPrioritySave,
   onEdit,
   onHealthcheck,
   onPromote,
   onToggle,
   onToggleAlwaysAlive,
   onDelete,
-  onPrioritySave,
-}: ProvidersViewProps) {
-  const { locale, messages } = useI18n()
-  const [search, setSearch] = useState('')
-  const [enabledOnly, setEnabledOnly] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<ProviderFilter>('all')
-  const deferredSearch = useDeferredValue(search)
-
-  const visibleProviders = sortProviders(dashboard.providers).filter((provider) => {
-    const query = deferredSearch.trim().toLowerCase()
-    const haystack = `${provider.name} ${provider.base_url} ${provider.models.join(' ')}`.toLowerCase()
-    const status = getProviderStatus(provider, messages).key
-    const matchesSearch = haystack.includes(query)
-    const matchesEnabled = !enabledOnly || provider.enabled
-    const matchesStatus =
-      statusFilter === 'all' ? true : status === statusFilter
-    return matchesSearch && matchesEnabled && matchesStatus
-  })
+}: {
+  provider: ProviderSummary
+  dashboard: DashboardResponse
+  messages: AppMessages
+  locale: string
+  busyAction: string | null
+  onPrioritySave: (provider: ProviderSummary, priority: number) => Promise<boolean>
+  onEdit: (provider: ProviderSummary) => void
+  onHealthcheck: (provider: ProviderSummary) => void
+  onPromote: (provider: ProviderSummary) => void
+  onToggle: (provider: ProviderSummary) => void
+  onToggleAlwaysAlive: (provider: ProviderSummary) => void
+  onDelete: (provider: ProviderSummary) => void
+}) {
+  const status = getProviderStatus(provider, messages)
+  const health = getHealthState(provider.healthcheck, messages)
+  const stats = findProviderStats(dashboard.stats, provider.name)
 
   async function commitPriority(provider: ProviderSummary, value: string, input: HTMLInputElement) {
     const normalized = Number.parseInt(value.trim(), 10)
@@ -111,6 +114,185 @@ export function ProvidersView({
       input.value = String(provider.priority)
     }
   }
+
+  return (
+    <motion.tr
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      className={`provider-row ${provider.enabled ? 'provider-row-enabled' : 'provider-row-disabled'}`}
+    >
+      <td>
+        <div className="table-primary">
+          <div className="table-title-row">
+            <strong>{provider.name}</strong>
+            {dashboard.primary_provider === provider.name ? (
+              <span className="pill pill-preferred">{messages.providers.primary}</span>
+            ) : null}
+          </div>
+          <span>{provider.base_url}</span>
+        </div>
+      </td>
+      <td>
+        <div className="table-primary">
+          <span className={`pill pill-${status.tone}`}>{status.label}</span>
+          <span>{getProviderRoutingHint(provider, messages)}</span>
+        </div>
+      </td>
+      <td>
+        <div className="priority-editor">
+          <input
+            key={`${provider.name}:${provider.priority}`}
+            className="table-priority-input"
+            type="number"
+            step="1"
+            defaultValue={provider.priority}
+            onBlur={(event) => {
+              void commitPriority(provider, event.currentTarget.value, event.currentTarget)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+            }}
+            disabled={busyAction !== null}
+          />
+          {busyAction === `priority:${provider.name}` ? (
+            <span className="table-helper-text">{messages.providers.saving}</span>
+          ) : (
+            <span className="table-helper-text">{messages.providers.blurToApply}</span>
+          )}
+        </div>
+      </td>
+      <td>
+        <div className="table-primary">
+          <strong>{getModelsLabel(provider, messages)}</strong>
+          <span>
+            {provider.healthcheck_model
+              ? messages.providers.healthcheckLabel(provider.healthcheck_model)
+              : provider.supports_all_models
+                ? messages.providers.wildcardHealthHint
+                : messages.providers.firstExplicitModelHint}
+          </span>
+        </div>
+      </td>
+      <td>
+        <div className="table-primary">
+          <span className={`pill pill-${health.tone}`}>{health.label}</span>
+          <span>
+            {provider.healthcheck.checked_at
+              ? `${provider.healthcheck.model ?? messages.app.noModel} · ${provider.healthcheck.latency_ms ?? messages.app.notAvailable} ms`
+              : messages.providers.noManualCheckYet}
+          </span>
+        </div>
+      </td>
+      <td>
+        <div className="table-primary">
+          <strong>{messages.providers.requestsCount(formatCountCompact(stats?.served_requests ?? 0))}</strong>
+          <span>{formatPercent(stats?.success_rate ?? null)} {messages.providers.successSuffix}</span>
+        </div>
+      </td>
+      <td>
+        <div className="table-primary">
+          <strong>
+            {messages.providers.failuresCount(provider.consecutive_failures, provider.max_failures)}
+          </strong>
+          <span>
+            {provider.always_alive
+              ? messages.providers.avgWithAlwaysAlive(formatNumber(stats?.average_duration_ms ?? null))
+              : messages.providers.avgWithCooldown(formatNumber(stats?.average_duration_ms ?? null), provider.cooldown_seconds)}
+          </span>
+        </div>
+      </td>
+      <td>{formatTimestamp(provider.last_success_at, locale)}</td>
+      <td>
+        <div className="action-cluster">
+          <button
+            type="button"
+            className="table-action"
+            onClick={() => onEdit(provider)}
+            disabled={busyAction !== null}
+          >
+            {messages.providers.edit}
+          </button>
+          <button
+            type="button"
+            className="table-action"
+            onClick={() => onHealthcheck(provider)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `health:${provider.name}` ? messages.providers.checking : messages.providers.check}
+          </button>
+          <button
+            type="button"
+            className="table-action"
+            onClick={() => onPromote(provider)}
+            disabled={busyAction !== null || dashboard.primary_provider === provider.name}
+          >
+            {busyAction === `promote:${provider.name}` ? messages.providers.switching : messages.providers.makePrimary}
+          </button>
+          <button
+            type="button"
+            className="table-action"
+            onClick={() => onToggle(provider)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `toggle:${provider.name}` ? messages.providers.saving : provider.enabled ? messages.providers.disable : messages.providers.enable}
+          </button>
+          <button
+            type="button"
+            className="table-action"
+            onClick={() => onToggleAlwaysAlive(provider)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `always-alive:${provider.name}` ? messages.providers.saving : provider.always_alive ? messages.providers.disableAlwaysAlive : messages.providers.alwaysAlive}
+          </button>
+          <button
+            type="button"
+            className="table-action danger"
+            onClick={() => onDelete(provider)}
+            disabled={busyAction !== null}
+          >
+            {messages.providers.delete}
+          </button>
+        </div>
+      </td>
+    </motion.tr>
+  )
+})
+
+export function ProvidersView({
+  dashboard,
+  busyAction,
+  onCreate,
+  onEdit,
+  onHealthcheck,
+  onPromote,
+  onToggle,
+  onToggleAlwaysAlive,
+  onDelete,
+  onPrioritySave,
+}: ProvidersViewProps) {
+  const { locale, messages } = useI18n()
+  const [search, setSearch] = useState('')
+  const [enabledOnly, setEnabledOnly] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<ProviderFilter>('all')
+  const deferredSearch = useDeferredValue(search)
+
+  const visibleProviders = useMemo(() => {
+    return sortProviders(dashboard.providers).filter((provider) => {
+      const query = deferredSearch.trim().toLowerCase()
+      const haystack = `${provider.name} ${provider.base_url} ${provider.models.join(' ')}`.toLowerCase()
+      const status = getProviderStatus(provider, messages).key
+      const matchesSearch = haystack.includes(query)
+      const matchesEnabled = !enabledOnly || provider.enabled
+      const matchesStatus = statusFilter === 'all' ? true : status === statusFilter
+      return matchesSearch && matchesEnabled && matchesStatus
+    })
+  }, [dashboard.providers, deferredSearch, messages, enabledOnly, statusFilter])
 
   return (
     <motion.div 
@@ -185,156 +367,27 @@ export function ProvidersView({
                   <th>{messages.providers.actions}</th>
                 </tr>
               </thead>
-              <tbody>
-                {visibleProviders.map((provider) => {
-                  const status = getProviderStatus(provider, messages)
-                  const health = getHealthState(provider.healthcheck, messages)
-                  const stats = findProviderStats(dashboard.stats, provider.name)
-                  return (
-                    <tr
+              <motion.tbody layout>
+                <AnimatePresence mode="popLayout">
+                  {visibleProviders.map((provider) => (
+                    <ProviderRow
                       key={provider.name}
-                      className={`provider-row ${provider.enabled ? 'provider-row-enabled' : 'provider-row-disabled'}`}
-                    >
-                      <td>
-                        <div className="table-primary">
-                          <div className="table-title-row">
-                            <strong>{provider.name}</strong>
-                            {dashboard.primary_provider === provider.name ? (
-                              <span className="pill pill-preferred">{messages.providers.primary}</span>
-                            ) : null}
-                          </div>
-                          <span>{provider.base_url}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary">
-                          <span className={`pill pill-${status.tone}`}>{status.label}</span>
-                          <span>{getProviderRoutingHint(provider, messages)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="priority-editor">
-                          <input
-                            key={`${provider.name}:${provider.priority}`}
-                            className="table-priority-input"
-                            type="number"
-                            step="1"
-                            defaultValue={provider.priority}
-                            onBlur={(event) => {
-                              void commitPriority(provider, event.currentTarget.value, event.currentTarget)
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault()
-                                event.currentTarget.blur()
-                              }
-                            }}
-                            disabled={busyAction !== null}
-                          />
-                          {busyAction === `priority:${provider.name}` ? (
-                            <span className="table-helper-text">{messages.providers.saving}</span>
-                          ) : (
-                            <span className="table-helper-text">{messages.providers.blurToApply}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary">
-                          <strong>{getModelsLabel(provider, messages)}</strong>
-                          <span>
-                            {provider.healthcheck_model
-                              ? messages.providers.healthcheckLabel(provider.healthcheck_model)
-                              : provider.supports_all_models
-                                ? messages.providers.wildcardHealthHint
-                                : messages.providers.firstExplicitModelHint}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary">
-                          <span className={`pill pill-${health.tone}`}>{health.label}</span>
-                          <span>
-                            {provider.healthcheck.checked_at
-                              ? `${provider.healthcheck.model ?? messages.app.noModel} · ${provider.healthcheck.latency_ms ?? messages.app.notAvailable} ms`
-                              : messages.providers.noManualCheckYet}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary">
-                          <strong>{messages.providers.requestsCount(formatCountCompact(stats?.served_requests ?? 0))}</strong>
-                          <span>{formatPercent(stats?.success_rate ?? null)} {messages.providers.successSuffix}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary">
-                          <strong>
-                            {messages.providers.failuresCount(provider.consecutive_failures, provider.max_failures)}
-                          </strong>
-                          <span>
-                            {provider.always_alive
-                              ? messages.providers.avgWithAlwaysAlive(formatNumber(stats?.average_duration_ms ?? null))
-                              : messages.providers.avgWithCooldown(formatNumber(stats?.average_duration_ms ?? null), provider.cooldown_seconds)}
-                          </span>
-                        </div>
-                      </td>
-                      <td>{formatTimestamp(provider.last_success_at, locale)}</td>
-                      <td>
-                        <div className="action-cluster">
-                          <button
-                            type="button"
-                            className="table-action"
-                            onClick={() => onEdit(provider)}
-                            disabled={busyAction !== null}
-                          >
-                            {messages.providers.edit}
-                          </button>
-                          <button
-                            type="button"
-                            className="table-action"
-                            onClick={() => onHealthcheck(provider)}
-                            disabled={busyAction !== null}
-                          >
-                            {busyAction === `health:${provider.name}` ? messages.providers.checking : messages.providers.check}
-                          </button>
-                          <button
-                            type="button"
-                            className="table-action"
-                            onClick={() => onPromote(provider)}
-                            disabled={busyAction !== null || dashboard.primary_provider === provider.name}
-                          >
-                            {busyAction === `promote:${provider.name}` ? messages.providers.switching : messages.providers.makePrimary}
-                          </button>
-                          <button
-                            type="button"
-                            className="table-action"
-                            onClick={() => onToggle(provider)}
-                            disabled={busyAction !== null}
-                          >
-                            {busyAction === `toggle:${provider.name}` ? messages.providers.saving : provider.enabled ? messages.providers.disable : messages.providers.enable}
-                          </button>
-                          <button
-                            type="button"
-                            className="table-action"
-                            onClick={() => onToggleAlwaysAlive(provider)}
-                            disabled={busyAction !== null}
-                          >
-                            {busyAction === `always-alive:${provider.name}` ? messages.providers.saving : provider.always_alive ? messages.providers.disableAlwaysAlive : messages.providers.alwaysAlive}
-                          </button>
-                          <button
-                            type="button"
-                            className="table-action danger"
-                            onClick={() => onDelete(provider)}
-                            disabled={busyAction !== null}
-                          >
-                            {messages.providers.delete}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
+                      provider={provider}
+                      dashboard={dashboard}
+                      messages={messages}
+                      locale={locale}
+                      busyAction={busyAction}
+                      onPrioritySave={onPrioritySave}
+                      onEdit={onEdit}
+                      onHealthcheck={onHealthcheck}
+                      onPromote={onPromote}
+                      onToggle={onToggle}
+                      onToggleAlwaysAlive={onToggleAlwaysAlive}
+                      onDelete={onDelete}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.tbody>
             </table>
           </div>
         )}

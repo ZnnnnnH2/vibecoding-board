@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Cable,
   Globe2,
@@ -11,7 +11,7 @@ import {
   SunMedium,
 } from 'lucide-react'
 
-import { api, setApiLocale } from './api'
+import { setApiLocale, api } from './api'
 import { formatTimestamp } from './format'
 import { AppLogo } from './components/AppLogo'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -38,51 +38,27 @@ import {
 import { DropdownSelect } from './components/DropdownSelect'
 
 import type {
-  DashboardResponse,
   HealthcheckSettingsFormState,
   HealthcheckSummary,
-  MetricsResponse,
-  MetricsWindow,
-  MutationResponse,
-  ProviderFormState,
   ProviderSummary,
   ResponsesWebSocketSettingsFormState,
   RetryPolicyFormState,
-  TokenUsageResponse,
   TrafficPreset,
+  DashboardResponse,
 } from './types'
 import type { LocalePreference } from './i18n'
 import type { ResolvedTheme, ThemePreference } from './theme'
 
-type AdminView = 'overview' | 'providers' | 'traffic' | 'settings'
+import { useToasts } from './hooks/useToasts'
+import { useDashboard } from './hooks/useDashboard'
+import { useProviderManager } from './hooks/useProviderManager'
 
-type ToastNotification = {
-  id: number
-  tone: 'success' | 'error'
-  text: string
-}
+type AdminView = 'overview' | 'providers' | 'traffic' | 'settings'
 
 type DialogState =
   | { kind: 'confirm-delete'; provider: ProviderSummary }
   | { kind: 'healthcheck-result'; providerName: string; healthcheck: HealthcheckSummary }
   | null
-
-
-const emptyForm: ProviderFormState = {
-  name: '',
-  baseUrl: '',
-  apiKey: '',
-  enabled: true,
-  alwaysAlive: false,
-  priority: '10',
-  modelMode: 'explicit',
-  modelText: '',
-  healthcheckModel: '',
-  supportsResponsesWebsocket: false,
-  timeoutSeconds: '60',
-  maxFailures: '3',
-  cooldownSeconds: '30',
-}
 
 const emptyHealthcheck: HealthcheckSummary = {
   checked_at: null,
@@ -98,42 +74,9 @@ const defaultHealthcheckModel = 'gpt-5.4'
 const defaultRetryableStatusCodes = [429, 500, 502, 503, 504]
 const defaultProviderFailureStatusCodes = [401, 403]
 
-
 function formatStatusCodes(value: unknown, fallback: number[]): string {
   return (Array.isArray(value) ? value : fallback).join(', ')
 }
-
-
-function formFromProvider(provider: ProviderSummary): ProviderFormState {
-  return {
-    name: provider.name,
-    baseUrl: provider.base_url,
-    apiKey: '',
-    enabled: provider.enabled,
-    alwaysAlive: provider.always_alive,
-    priority: String(provider.priority),
-    modelMode: provider.supports_all_models ? 'all' : 'explicit',
-    modelText: provider.supports_all_models ? '' : provider.models.join('\n'),
-    healthcheckModel: provider.healthcheck_model ?? '',
-    supportsResponsesWebsocket: provider.supports_responses_websocket,
-    timeoutSeconds: String(provider.timeout_seconds),
-    maxFailures: String(provider.max_failures),
-    cooldownSeconds: String(provider.cooldown_seconds),
-  }
-}
-
-
-function createProviderForm(dashboard: DashboardResponse | null): ProviderFormState {
-  return {
-    ...emptyForm,
-    priority: String(
-      dashboard?.providers.length
-        ? Math.max(...dashboard.providers.map((provider) => provider.priority)) + 10
-        : 10,
-    ),
-  }
-}
-
 
 function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicyFormState {
   return {
@@ -147,9 +90,9 @@ function createRetryPolicyForm(dashboard: DashboardResponse | null): RetryPolicy
     ),
     sameProviderRetryCount: String(dashboard?.retry_policy?.same_provider_retry_count ?? 0),
     retryIntervalMs: String(dashboard?.retry_policy?.retry_interval_ms ?? 0),
+    retryExponentialBackoff: dashboard?.retry_policy?.retry_exponential_backoff ?? false,
   }
 }
-
 
 function createHealthcheckSettingsForm(dashboard: DashboardResponse | null): HealthcheckSettingsFormState {
   return {
@@ -166,27 +109,6 @@ function createResponsesWebSocketSettingsForm(
   }
 }
 
-function providerFormsEqual(
-  left: ProviderFormState,
-  right: ProviderFormState,
-): boolean {
-  return (
-    left.name === right.name &&
-    left.baseUrl === right.baseUrl &&
-    left.apiKey === right.apiKey &&
-    left.enabled === right.enabled &&
-    left.alwaysAlive === right.alwaysAlive &&
-    left.priority === right.priority &&
-    left.modelMode === right.modelMode &&
-    left.modelText === right.modelText &&
-    left.healthcheckModel === right.healthcheckModel &&
-    left.supportsResponsesWebsocket === right.supportsResponsesWebsocket &&
-    left.timeoutSeconds === right.timeoutSeconds &&
-    left.maxFailures === right.maxFailures &&
-    left.cooldownSeconds === right.cooldownSeconds
-  )
-}
-
 function retryPolicyFormsEqual(
   left: RetryPolicyFormState,
   right: RetryPolicyFormState,
@@ -195,7 +117,8 @@ function retryPolicyFormsEqual(
     left.retryableStatusCodes === right.retryableStatusCodes &&
     left.providerFailureStatusCodes === right.providerFailureStatusCodes &&
     left.sameProviderRetryCount === right.sameProviderRetryCount &&
-    left.retryIntervalMs === right.retryIntervalMs
+    left.retryIntervalMs === right.retryIntervalMs &&
+    left.retryExponentialBackoff === right.retryExponentialBackoff
   )
 }
 
@@ -213,42 +136,59 @@ function responsesWebSocketSettingsFormsEqual(
   return left.enabled === right.enabled
 }
 
-
 export default function App() {
-  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
-  const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
-  const [tokenUsage, setTokenUsage] = useState<TokenUsageResponse | null>(null)
-  const [metricsWindow, setMetricsWindow] = useState<MetricsWindow>('24h')
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference())
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme())
+  const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
+
+  const theme = resolveTheme(themePreference, systemTheme)
+  const locale = resolveLocale(localePreference)
+  const messages = messagesByLocale[locale]
+
+  const { toasts, pushToast, dismissToast } = useToasts()
+  const {
+    dashboard,
+    metrics,
+    tokenUsage,
+    metricsWindow,
+    setMetricsWindow,
+    busyAction,
+    setBusyAction,
+    loading,
+    loadAdminData,
+    runMutation,
+    cancelActiveRequest,
+    setDashboard
+  } = useDashboard(locale, pushToast)
+
   const [currentView, setCurrentView] = useState<AdminView>('overview')
   const [trafficPreset, setTrafficPreset] = useState<TrafficPreset | null>(null)
-  const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | null>(null)
-  const [editingProvider, setEditingProvider] = useState<ProviderSummary | null>(null)
-  const [form, setForm] = useState<ProviderFormState>(emptyForm)
+  
+  const {
+    drawerMode,
+    form,
+    setForm,
+    providerDrawerBusy,
+    openCreateDrawer,
+    openEditDrawer,
+    closeDrawer,
+    handleSubmit,
+    handleProviderAutoSave,
+    handlePromote,
+    handleToggle,
+    handleToggleAlwaysAlive,
+    handlePrioritySave
+  } = useProviderManager(dashboard, runMutation, setCurrentView, busyAction)
+
   const [retryPolicyForm, setRetryPolicyForm] = useState<RetryPolicyFormState>(() => createRetryPolicyForm(null))
   const [healthcheckForm, setHealthcheckForm] = useState<HealthcheckSettingsFormState>(() =>
     createHealthcheckSettingsForm(null),
   )
   const [responsesWebSocketForm, setResponsesWebSocketForm] =
     useState<ResponsesWebSocketSettingsFormState>(() => createResponsesWebSocketSettingsForm(null))
-  const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+
   const [showFloatingRefresh, setShowFloatingRefresh] = useState(false)
-  const [toasts, setToasts] = useState<ToastNotification[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
-  const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference())
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme())
-  const [localePreference, setLocalePreference] = useState<LocalePreference>(() => loadLocalePreference())
-  const activeRequestControllerRef = useRef<AbortController | null>(null)
-  const toastIdRef = useRef(0)
-  const toastTimerIds = useRef(new Set<number>())
-  const providerDrawerBusyRef = useRef(false)
-  const metricsWindowRef = useRef(metricsWindow)
-  metricsWindowRef.current = metricsWindow
-  const initialLoadDone = useRef(false)
-  const theme = resolveTheme(themePreference, systemTheme)
-  const locale = resolveLocale(localePreference)
-  const messages = messagesByLocale[locale]
-  const providerDrawerBusy = busyAction === 'submit' || busyAction === 'provider-autosave'
 
   const meta =
     currentView === 'overview'
@@ -287,107 +227,6 @@ export default function App() {
     setApiLocale(locale)
   }, [locale])
 
-  const cancelActiveRequest = useCallback(() => {
-    activeRequestControllerRef.current?.abort()
-    activeRequestControllerRef.current = null
-    setLoading(false)
-  }, [])
-
-  const pushToast = useCallback((tone: ToastNotification['tone'], text: string) => {
-    toastIdRef.current += 1
-    setToasts((current) => [...current, { id: toastIdRef.current, tone, text }])
-  }, [])
-
-  const dismissToast = useCallback((id: number) => {
-    setToasts((current) => current.filter((toast) => toast.id !== id))
-  }, [])
-
-  const openHealthcheckDialog = useCallback((providerName: string, healthcheck: HealthcheckSummary) => {
-    setDialog({
-      kind: 'healthcheck-result',
-      providerName,
-      healthcheck,
-    })
-  }, [])
-
-  const loadAdminData = useCallback(async () => {
-    activeRequestControllerRef.current?.abort()
-    activeRequestControllerRef.current = null
-    const controller = new AbortController()
-    activeRequestControllerRef.current = controller
-    setLoading(true)
-
-    try {
-      const [dashboardResult, metricsResult, tokenUsageResult] = await Promise.allSettled([
-        api.dashboard(controller.signal),
-        api.metrics(metricsWindowRef.current, controller.signal),
-        api.tokenUsage(controller.signal),
-      ])
-
-      if (dashboardResult.status === 'fulfilled') {
-        startTransition(() => {
-          setDashboard(dashboardResult.value)
-        })
-      } else if (
-        !(dashboardResult.reason instanceof Error && dashboardResult.reason.name === 'AbortError')
-      ) {
-        pushToast(
-          'error',
-          dashboardResult.reason instanceof Error ? dashboardResult.reason.message : messages.app.loadFailed,
-        )
-      }
-
-      if (metricsResult.status === 'fulfilled') {
-        startTransition(() => {
-          setMetrics(metricsResult.value)
-        })
-      } else if (
-        !(metricsResult.reason instanceof Error && metricsResult.reason.name === 'AbortError')
-      ) {
-        pushToast(
-          'error',
-          metricsResult.reason instanceof Error ? metricsResult.reason.message : messages.app.metricsLoadFailed,
-        )
-      }
-
-      if (tokenUsageResult.status === 'fulfilled') {
-        startTransition(() => {
-          setTokenUsage(tokenUsageResult.value)
-        })
-      }
-    } finally {
-      if (activeRequestControllerRef.current === controller) {
-        activeRequestControllerRef.current = null
-        setLoading(false)
-      }
-    }
-    initialLoadDone.current = true
-  }, [messages.app.loadFailed, messages.app.metricsLoadFailed, pushToast])
-
-  useEffect(() => {
-    void loadAdminData()
-  }, [loadAdminData])
-
-  useEffect(() => {
-    if (!initialLoadDone.current) return
-    const controller = new AbortController()
-    api.metrics(metricsWindow, controller.signal)
-      .then((result) => startTransition(() => setMetrics(result)))
-      .catch((error) => {
-        if (!(error instanceof Error && error.name === 'AbortError')) {
-          pushToast('error', error instanceof Error ? error.message : messages.app.metricsLoadFailed)
-        }
-      })
-    return () => controller.abort()
-  }, [metricsWindow, pushToast, messages.app.metricsLoadFailed])
-
-  useEffect(() => {
-    return () => {
-      activeRequestControllerRef.current?.abort()
-      activeRequestControllerRef.current = null
-    }
-  }, [])
-
   useEffect(() => {
     const handleScroll = () => {
       setShowFloatingRefresh(window.scrollY > 240)
@@ -397,17 +236,6 @@ export default function App() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
-
-  useEffect(() => {
-    for (const toast of toasts) {
-      if (toastTimerIds.current.has(toast.id)) continue
-      toastTimerIds.current.add(toast.id)
-      window.setTimeout(() => {
-        toastTimerIds.current.delete(toast.id)
-        setToasts((current) => current.filter((item) => item.id !== toast.id))
-      }, 3500)
-    }
-  }, [toasts])
 
   useEffect(() => {
     if (themePreference !== 'auto' || typeof window === 'undefined') {
@@ -439,109 +267,12 @@ export default function App() {
     setResponsesWebSocketForm(createResponsesWebSocketSettingsForm(dashboard))
   }, [dashboard])
 
-  async function runMutation(
-    actionKey: string,
-    action: () => Promise<{ message: string; dashboard: DashboardResponse }>,
-    onSuccess?: (response: MutationResponse) => void,
-  ): Promise<boolean> {
-    cancelActiveRequest()
-    setBusyAction(actionKey)
-    try {
-      const response = await action()
-      startTransition(() => {
-        setDashboard(response.dashboard)
-      })
-      onSuccess?.(response)
-      pushToast('success', response.message)
-      return true
-    } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : messages.app.actionFailed)
-      return false
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  function openCreateDrawer() {
-    setCurrentView('providers')
-    setEditingProvider(null)
-    setForm(createProviderForm(dashboard))
-    setDrawerMode('create')
-  }
-
-  function openEditDrawer(provider: ProviderSummary) {
-    setCurrentView('providers')
-    setEditingProvider(provider)
-    setForm(formFromProvider(provider))
-    setDrawerMode('edit')
-  }
-
-  function closeDrawer() {
-    if (providerDrawerBusyRef.current || providerDrawerBusy) {
-      return
-    }
-    setDrawerMode(null)
-    setEditingProvider(null)
-    setForm(createProviderForm(dashboard))
-  }
-
-  async function handleSubmit(nextForm: ProviderFormState) {
-    if (drawerMode !== 'create') {
-      return
-    }
-
-    providerDrawerBusyRef.current = true
-    const success = await runMutation('submit', () => api.createProvider(nextForm))
-    providerDrawerBusyRef.current = false
-
-    if (success) {
-      closeDrawer()
-    }
-  }
-
-  async function handleProviderAutoSave(nextForm: ProviderFormState) {
-    if (drawerMode !== 'edit' || busyAction !== null || editingProvider === null) {
-      return
-    }
-
-    setForm(nextForm)
-    if (providerFormsEqual(nextForm, formFromProvider(editingProvider))) {
-      return
-    }
-
-    providerDrawerBusyRef.current = true
-    try {
-      await runMutation(
-        'provider-autosave',
-        () => api.updateProvider(editingProvider.name, nextForm),
-        (response) => {
-          const updatedProvider =
-            response.dashboard.providers.find((provider) => provider.name === nextForm.name.trim()) ??
-            response.dashboard.providers.find((provider) => provider.name === editingProvider.name)
-
-          if (!updatedProvider) {
-            return
-          }
-
-          setEditingProvider(updatedProvider)
-          setForm(formFromProvider(updatedProvider))
-        },
-      )
-    } finally {
-      providerDrawerBusyRef.current = false
-    }
-  }
-
-  async function handlePromote(provider: ProviderSummary) {
-    await runMutation(`promote:${provider.name}`, () => api.promoteProvider(provider.name))
-  }
-
-  async function handleToggle(provider: ProviderSummary) {
-    await runMutation(`toggle:${provider.name}`, () => api.toggleProvider(provider.name))
-  }
-
-  async function handleToggleAlwaysAlive(provider: ProviderSummary) {
-    await runMutation(`always-alive:${provider.name}`, () => api.toggleProviderAlwaysAlive(provider.name))
+  const openHealthcheckDialog = (providerName: string, healthcheck: HealthcheckSummary) => {
+    setDialog({
+      kind: 'healthcheck-result',
+      providerName,
+      healthcheck,
+    })
   }
 
   async function handleHealthcheck(provider: ProviderSummary) {
@@ -549,9 +280,7 @@ export default function App() {
     setBusyAction(`health:${provider.name}`)
     try {
       const response = await api.healthcheckProvider(provider.name)
-      startTransition(() => {
-        setDashboard(response.dashboard)
-      })
+      setDashboard(response.dashboard)
       const updatedProvider = response.dashboard.providers.find((item) => item.name === provider.name)
       openHealthcheckDialog(provider.name, updatedProvider?.healthcheck ?? provider.healthcheck)
     } catch (error) {
@@ -565,10 +294,6 @@ export default function App() {
     } finally {
       setBusyAction(null)
     }
-  }
-
-  async function handlePrioritySave(provider: ProviderSummary, priority: number): Promise<boolean> {
-    return runMutation(`priority:${provider.name}`, () => api.updateProviderPriority(provider.name, priority))
   }
 
   async function handleDeleteConfirm() {

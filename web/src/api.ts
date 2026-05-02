@@ -164,6 +164,7 @@ function buildRetryPolicyPayload(form: RetryPolicyFormState) {
     provider_failure_status_codes: providerFailureStatusCodes,
     same_provider_retry_count: sameProviderRetryCount,
     retry_interval_ms: retryIntervalMs,
+    retry_exponential_backoff: form.retryExponentialBackoff,
   }
 }
 

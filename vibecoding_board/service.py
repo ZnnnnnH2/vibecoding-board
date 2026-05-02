@@ -505,7 +505,10 @@ class ManagedUpstreamWebSocketSession:
             raise
         except Exception:
             LOGGER.debug("client sender loop terminated", exc_info=True)
-            await self._on_sender_error(attachment)
+            try:
+                await self._on_sender_error(attachment)
+            except Exception:
+                LOGGER.debug("failed to handle sender error", exc_info=True)
         finally:
             attachment.stopped.set()
 
@@ -588,12 +591,26 @@ class ManagedUpstreamWebSocketSession:
                 "managed upstream websocket session aborted: %s", exc,
                 extra={"provider": self.provider_name},
             )
-            await self._abort_session(exc, terminal_reason=BUFFER_OVERFLOW_TERMINAL_REASON)
+            try:
+                await self._abort_session(exc, terminal_reason=BUFFER_OVERFLOW_TERMINAL_REASON)
+            except Exception:
+                LOGGER.debug("failed to abort session", exc_info=True)
         except (ConnectionClosed, OSError, WebSocketException) as exc:
-            await self._abort_session(exc, terminal_reason="closed")
+            try:
+                await self._abort_session(exc, terminal_reason="closed")
+            except Exception:
+                LOGGER.debug("failed to abort session", exc_info=True)
         except Exception as exc:
             LOGGER.exception("upstream websocket reader crashed")
-            await self._abort_session(exc, terminal_reason="closed")
+            try:
+                await self._abort_session(exc, terminal_reason="closed")
+            except Exception:
+                LOGGER.debug("failed to abort session", exc_info=True)
+        finally:
+            try:
+                await asyncio.wait_for(self.websocket.close(), timeout=1.0)
+            except Exception:
+                pass
 
     async def _abort_session(self, exc: BaseException, *, terminal_reason: str) -> None:
         await self.turn_state_store.mark_terminal(self.turn_state_token, terminal_reason)
@@ -1943,7 +1960,11 @@ class ProxyService:
                         )
                         provider_exhausted = True
                         break
-                    await self._sleep_before_same_provider_retry(retry_policy.retry_interval_ms)
+                    await self._sleep_before_same_provider_retry(
+                        retry_policy.retry_interval_ms,
+                        provider_attempt=provider_attempt,
+                        exponential_backoff=retry_policy.retry_exponential_backoff,
+                    )
                     continue
 
                 duration_ms = int((perf_counter() - started_at) * 1000)
@@ -2083,7 +2104,11 @@ class ProxyService:
                         )
                         provider_exhausted = True
                         break
-                    await self._sleep_before_same_provider_retry(retry_policy.retry_interval_ms)
+                    await self._sleep_before_same_provider_retry(
+                        retry_policy.retry_interval_ms,
+                        provider_attempt=provider_attempt,
+                        exponential_backoff=retry_policy.retry_exponential_backoff,
+                    )
                     continue
 
                 if status_kind == "non_retryable":
@@ -2380,10 +2405,18 @@ class ProxyService:
         ]
 
     @staticmethod
-    async def _sleep_before_same_provider_retry(retry_interval_ms: int) -> None:
-        if retry_interval_ms <= 0:
-            return
-        await asyncio.sleep(retry_interval_ms / 1000)
+    async def _sleep_before_same_provider_retry(
+        retry_interval_ms: int,
+        *,
+        provider_attempt: int,
+        exponential_backoff: bool,
+    ) -> None:
+        if retry_interval_ms > 0:
+            if exponential_backoff:
+                interval_ms = retry_interval_ms * (2 ** (provider_attempt - 1))
+            else:
+                interval_ms = retry_interval_ms
+            await asyncio.sleep(interval_ms / 1000.0)
 
     @staticmethod
     def _request_kind(path: str) -> str:

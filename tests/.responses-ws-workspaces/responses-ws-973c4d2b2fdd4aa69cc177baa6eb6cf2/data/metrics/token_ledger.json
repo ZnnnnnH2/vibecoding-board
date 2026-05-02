@@ -1,0 +1,24 @@
+{
+  "input_tokens": 5,
+  "output_tokens": 3,
+  "total_tokens": 8,
+  "total_requests": 1,
+  "requests_with_usage": 1,
+  "updated_at": "2026-04-28T14:21:49.195723+00:00",
+  "providers": {
+    "relay_a": {
+      "input_tokens": 5,
+      "output_tokens": 3,
+      "total_tokens": 8,
+      "requests": 1
+    }
+  },
+  "models": {
+    "gpt-4.1": {
+      "input_tokens": 5,
+      "output_tokens": 3,
+      "total_tokens": 8,
+      "requests": 1
+    }
+  }
+}

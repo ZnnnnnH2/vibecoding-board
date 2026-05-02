@@ -1,6 +1,6 @@
-import { Fragment, useDeferredValue, useEffect, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useState, useMemo, memo } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, RotateCcw, Search } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import type { Variants } from 'framer-motion'
 
@@ -11,6 +11,7 @@ import {
   requestHeadline,
 } from '../format'
 import { useI18n } from '../i18n'
+import type { AppMessages } from '../i18n'
 
 import { DropdownSelect } from './DropdownSelect'
 
@@ -160,6 +161,222 @@ const itemVariants: Variants = {
   },
 }
 
+const TrafficRow = memo(function TrafficRow({
+  request,
+  expanded,
+  copyState,
+  locale,
+  messages,
+  onToggleExpand,
+  onCopyDebug,
+}: {
+  request: RecentRequest
+  expanded: boolean
+  copyState: CopyState
+  locale: string
+  messages: AppMessages
+  onToggleExpand: () => void
+  onCopyDebug: (request: RecentRequest) => void
+}) {
+  const requestState = getRequestStateMeta(request.state, messages)
+  const hasFailover = requestHasFailover(request)
+  const hasRetry = requestHasRetry(request)
+  const hasSticky = requestHasStickyOrTurnState(request)
+  const hasError = requestHasError(request)
+  const requestCopyState = copyState?.requestId === request.id ? copyState.state : null
+
+  function describeNextAction(nextAction: RecentRequest['attempts'][number]['next_action']): string {
+    if (nextAction === 'retry_same_provider') {
+      return messages.traffic.retrySameProvider
+    }
+    if (nextAction === 'return_to_client') {
+      return messages.traffic.returnToClient
+    }
+    return messages.traffic.failoverNextProvider
+  }
+
+  return (
+    <Fragment>
+      <motion.tr
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.2 }}
+      >
+        <td>
+          <button
+            type="button"
+            className="expand-button"
+            onClick={onToggleExpand}
+            aria-label={expanded ? messages.traffic.collapseDetails : messages.traffic.expandDetails}
+          >
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        </td>
+        <td>
+          <div className="table-primary">
+            <strong>{requestHeadline(request, messages)}</strong>
+            <span>{request.final_url ?? request.endpoint}</span>
+            <div className="traffic-row-tags">
+              <span className="mini-chip">{messages.traffic.attemptCount(request.attempts.length)}</span>
+              {request.status_code != null ? (
+                <span className="mini-chip">{messages.traffic.statusCodeTag(request.status_code)}</span>
+              ) : null}
+              {hasRetry ? <span className="mini-chip mini-chip-amber">{messages.traffic.retryTag}</span> : null}
+              {hasFailover ? <span className="mini-chip mini-chip-rose">{messages.traffic.failoverTag}</span> : null}
+              {hasSticky ? <span className="mini-chip mini-chip-blue">{messages.traffic.stickyTag}</span> : null}
+              {hasError ? <span className="mini-chip mini-chip-rose">{messages.traffic.errorTag}</span> : null}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div className="table-primary">
+            <strong>{request.final_provider ?? messages.traffic.noProviderSelected}</strong>
+            <span>{request.southbound_transport ?? messages.traffic.noTransport}</span>
+          </div>
+        </td>
+        <td>
+          <span className={`pill pill-${requestState.tone}`}>
+            {requestState.label}
+          </span>
+        </td>
+        <td>{request.duration_ms ?? messages.app.notAvailable} ms</td>
+        <td>{request.ttfb_ms ?? messages.app.notAvailable} ms</td>
+        <td>{formatTimestamp(request.created_at, locale)}</td>
+      </motion.tr>
+      {expanded ? (
+        <motion.tr
+          className="expanded-row"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <td colSpan={7}>
+            <div className="expanded-panel">
+              <div className="traffic-detail-header">
+                <div>
+                  <span className="surface-label">{messages.traffic.requestId}</span>
+                  <strong>{request.id}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button traffic-copy-button"
+                  onClick={() => onCopyDebug(request)}
+                >
+                  {requestCopyState === 'copied' ? <Check size={16} /> : <Copy size={16} />}
+                  {requestCopyState === 'copied'
+                    ? messages.traffic.copiedDebug
+                    : requestCopyState === 'failed'
+                      ? messages.traffic.copyFailed
+                      : messages.traffic.copyDebug}
+                </button>
+              </div>
+
+              <div className="expanded-grid">
+                <div className="expanded-card">
+                  <span className="surface-label">{messages.traffic.endpoint}</span>
+                  <strong>{request.endpoint}</strong>
+                </div>
+                <div className="expanded-card">
+                  <span className="surface-label">{messages.traffic.mode}</span>
+                  <strong>{request.stream ? messages.traffic.streaming : messages.traffic.standard}</strong>
+                </div>
+                <div className="expanded-card">
+                  <span className="surface-label">{messages.traffic.httpStatus}</span>
+                  <strong>{request.status_code ?? messages.app.notAvailable}</strong>
+                </div>
+                <div className="expanded-card">
+                  <span className="surface-label">{messages.traffic.usage}</span>
+                  <strong>
+                    {request.usage
+                      ? `${formatCountCompact(request.usage.input_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.output_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.total_tokens, messages.app.notAvailable)}`
+                      : messages.traffic.noUsageFields}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="expanded-block routing-trace-block">
+                <span className="surface-label">{messages.traffic.routingTrace}</span>
+                <div className="routing-trace-grid">
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.northboundTransport}</span>
+                    <strong>{request.northbound_transport}</strong>
+                  </div>
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.southboundTransport}</span>
+                    <strong>{request.southbound_transport ?? messages.traffic.pendingTransport}</strong>
+                  </div>
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.stickyProvider}</span>
+                    <strong>{request.sticky_provider ?? messages.traffic.noStickyProvider}</strong>
+                  </div>
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.fallbackReason}</span>
+                    <strong>{request.fallback_reason ?? messages.traffic.noFallbackReason}</strong>
+                  </div>
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.turnState}</span>
+                    <strong>{request.turn_state_status ?? messages.traffic.noTurnState}</strong>
+                  </div>
+                  <div className="routing-trace-item">
+                    <span>{messages.traffic.turnStateToken}</span>
+                    <strong>
+                      {request.turn_state_token_present
+                        ? messages.traffic.present
+                        : messages.traffic.absent}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="expanded-columns">
+                <div className="expanded-block">
+                  <span className="surface-label">{messages.traffic.fallbackAttempts}</span>
+                  {request.attempts.length === 0 ? (
+                    <p>{messages.traffic.noRetryAttempts}</p>
+                  ) : (
+                    <div className="attempt-list">
+                      {request.attempts.map((attempt, attemptIndex) => (
+                        <div
+                          key={`${request.id}-${attempt.provider}-${attempt.url}-${attemptIndex}`}
+                          className="attempt-item"
+                        >
+                          <div>
+                            <strong>{attempt.provider}</strong>
+                            <span>{messages.traffic.providerAttempt(attempt.provider_attempt)}</span>
+                            <span>{attempt.url}</span>
+                          </div>
+                          <div>
+                            <strong>{attempt.outcome}</strong>
+                            <span>{attempt.status_code ?? messages.traffic.noStatus}</span>
+                            <span>{describeNextAction(attempt.next_action)}</span>
+                            <span>{messages.traffic.attemptTransport(attempt.transport)}</span>
+                            <span>{attempt.sticky ? messages.traffic.stickyAttempt : messages.traffic.nonStickyAttempt}</span>
+                            {attempt.fallback_reason ? (
+                              <span>{messages.traffic.attemptFallbackReason(attempt.fallback_reason)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="expanded-block">
+                  <span className="surface-label">{messages.traffic.error}</span>
+                  <p>{request.error ?? messages.traffic.noErrorRecorded}</p>
+                </div>
+              </div>
+            </div>
+          </td>
+        </motion.tr>
+      ) : null}
+    </Fragment>
+  )
+})
+
 export function TrafficView({ requests, preset }: TrafficViewProps) {
   const { locale, messages } = useI18n()
   const [search, setSearch] = useState('')
@@ -197,52 +414,47 @@ export function TrafficView({ requests, preset }: TrafficViewProps) {
     return () => window.clearTimeout(timeoutId)
   }, [preset])
 
-  const filteredRequests = requests.filter((request) => {
-    const query = deferredSearch.trim().toLowerCase()
-    const haystack = [
-      request.model,
-      request.final_provider ?? '',
-      request.final_url ?? request.endpoint,
-      request.error ?? '',
-      request.status_code ?? '',
-      request.sticky_provider ?? '',
-      request.fallback_reason ?? '',
-      request.turn_state_status ?? '',
-      ...request.attempts.flatMap((attempt) => [
-        attempt.provider,
-        attempt.url,
-        attempt.outcome,
-        attempt.status_code ?? '',
-        attempt.fallback_reason ?? '',
-      ]),
-    ].join(' ').toLowerCase()
-    const matchesSearch = haystack.includes(query)
-    const matchesState = stateFilter === 'all' ? true : request.state === stateFilter
-    const matchesKind = kindFilter === 'all' ? true : request.request_kind === kindFilter
-    const matchesDebug =
-      debugFilter === 'all' ||
-      (debugFilter === 'has_error' && requestHasError(request)) ||
-      (debugFilter === 'failover' && requestHasFailover(request)) ||
-      (debugFilter === 'retry' && requestHasRetry(request)) ||
-      (debugFilter === 'sticky' && requestHasStickyOrTurnState(request))
-    return matchesSearch && matchesState && matchesKind && matchesDebug
-  })
-  const visibleRequests = filteredRequests.slice(0, rowLimit)
+  const filteredRequests = useMemo(() => {
+    return requests.filter((request) => {
+      const query = deferredSearch.trim().toLowerCase()
+      const haystack = [
+        request.model,
+        request.final_provider ?? '',
+        request.final_url ?? request.endpoint,
+        request.error ?? '',
+        request.status_code ?? '',
+        request.sticky_provider ?? '',
+        request.fallback_reason ?? '',
+        request.turn_state_status ?? '',
+        ...request.attempts.flatMap((attempt) => [
+          attempt.provider,
+          attempt.url,
+          attempt.outcome,
+          attempt.status_code ?? '',
+          attempt.fallback_reason ?? '',
+        ]),
+      ].join(' ').toLowerCase()
+      const matchesSearch = haystack.includes(query)
+      const matchesState = stateFilter === 'all' ? true : request.state === stateFilter
+      const matchesKind = kindFilter === 'all' ? true : request.request_kind === kindFilter
+      const matchesDebug =
+        debugFilter === 'all' ||
+        (debugFilter === 'has_error' && requestHasError(request)) ||
+        (debugFilter === 'failover' && requestHasFailover(request)) ||
+        (debugFilter === 'retry' && requestHasRetry(request)) ||
+        (debugFilter === 'sticky' && requestHasStickyOrTurnState(request))
+      return matchesSearch && matchesState && matchesKind && matchesDebug
+    })
+  }, [requests, deferredSearch, stateFilter, kindFilter, debugFilter])
+
+  const visibleRequests = useMemo(() => {
+    return filteredRequests.slice(0, rowLimit)
+  }, [filteredRequests, rowLimit])
   const filtersActive =
     search.trim() !== '' ||
     stateFilter !== 'all' ||
     kindFilter !== 'all' ||
     debugFilter !== 'all'
-
-  function describeNextAction(nextAction: RecentRequest['attempts'][number]['next_action']): string {
-    if (nextAction === 'retry_same_provider') {
-      return messages.traffic.retrySameProvider
-    }
-    if (nextAction === 'return_to_client') {
-      return messages.traffic.returnToClient
-    }
-    return messages.traffic.failoverNextProvider
-  }
 
   function clearFilters() {
     setSearch('')
@@ -366,187 +578,22 @@ export function TrafficView({ requests, preset }: TrafficViewProps) {
                   <th>{messages.traffic.created}</th>
                 </tr>
               </thead>
-              <tbody>
-                {visibleRequests.map((request) => {
-                  const expanded = expandedRequestId === request.id
-                  const requestState = getRequestStateMeta(request.state, messages)
-                  const hasFailover = requestHasFailover(request)
-                  const hasRetry = requestHasRetry(request)
-                  const hasSticky = requestHasStickyOrTurnState(request)
-                  const hasError = requestHasError(request)
-                  const requestCopyState = copyState?.requestId === request.id ? copyState.state : null
-                  return (
-                    <Fragment key={request.id}>
-                      <tr key={request.id}>
-                        <td>
-                          <button
-                            type="button"
-                            className="expand-button"
-                            onClick={() => setExpandedRequestId(expanded ? null : request.id)}
-                            aria-label={expanded ? messages.traffic.collapseDetails : messages.traffic.expandDetails}
-                          >
-                            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                          </button>
-                        </td>
-                        <td>
-                          <div className="table-primary">
-                            <strong>{requestHeadline(request, messages)}</strong>
-                            <span>{request.final_url ?? request.endpoint}</span>
-                            <div className="traffic-row-tags">
-                              <span className="mini-chip">{messages.traffic.attemptCount(request.attempts.length)}</span>
-                              {request.status_code != null ? (
-                                <span className="mini-chip">{messages.traffic.statusCodeTag(request.status_code)}</span>
-                              ) : null}
-                              {hasRetry ? <span className="mini-chip mini-chip-amber">{messages.traffic.retryTag}</span> : null}
-                              {hasFailover ? <span className="mini-chip mini-chip-rose">{messages.traffic.failoverTag}</span> : null}
-                              {hasSticky ? <span className="mini-chip mini-chip-blue">{messages.traffic.stickyTag}</span> : null}
-                              {hasError ? <span className="mini-chip mini-chip-rose">{messages.traffic.errorTag}</span> : null}
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="table-primary">
-                            <strong>{request.final_provider ?? messages.traffic.noProviderSelected}</strong>
-                            <span>{request.southbound_transport ?? messages.traffic.noTransport}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`pill pill-${requestState.tone}`}>
-                            {requestState.label}
-                          </span>
-                        </td>
-                        <td>{request.duration_ms ?? messages.app.notAvailable} ms</td>
-                        <td>{request.ttfb_ms ?? messages.app.notAvailable} ms</td>
-                        <td>{formatTimestamp(request.created_at, locale)}</td>
-                      </tr>
-                      {expanded ? (
-                        <tr className="expanded-row">
-                          <td colSpan={7}>
-                            <div className="expanded-panel">
-                              <div className="traffic-detail-header">
-                                <div>
-                                  <span className="surface-label">{messages.traffic.requestId}</span>
-                                  <strong>{request.id}</strong>
-                                </div>
-                                <button
-                                  type="button"
-                                  className="ghost-button traffic-copy-button"
-                                  onClick={() => {
-                                    void copyRequestDebugSummary(request)
-                                  }}
-                                >
-                                  {requestCopyState === 'copied' ? <Check size={16} /> : <Copy size={16} />}
-                                  {requestCopyState === 'copied'
-                                    ? messages.traffic.copiedDebug
-                                    : requestCopyState === 'failed'
-                                      ? messages.traffic.copyFailed
-                                      : messages.traffic.copyDebug}
-                                </button>
-                              </div>
-
-                              <div className="expanded-grid">
-                                <div className="expanded-card">
-                                  <span className="surface-label">{messages.traffic.endpoint}</span>
-                                  <strong>{request.endpoint}</strong>
-                                </div>
-                                <div className="expanded-card">
-                                  <span className="surface-label">{messages.traffic.mode}</span>
-                                  <strong>{request.stream ? messages.traffic.streaming : messages.traffic.standard}</strong>
-                                </div>
-                                <div className="expanded-card">
-                                  <span className="surface-label">{messages.traffic.httpStatus}</span>
-                                  <strong>{request.status_code ?? messages.app.notAvailable}</strong>
-                                </div>
-                                <div className="expanded-card">
-                                  <span className="surface-label">{messages.traffic.usage}</span>
-                                  <strong>
-                                    {request.usage
-                                      ? `${formatCountCompact(request.usage.input_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.output_tokens, messages.app.notAvailable)} / ${formatCountCompact(request.usage.total_tokens, messages.app.notAvailable)}`
-                                      : messages.traffic.noUsageFields}
-                                  </strong>
-                                </div>
-                              </div>
-
-                              <div className="expanded-block routing-trace-block">
-                                <span className="surface-label">{messages.traffic.routingTrace}</span>
-                                <div className="routing-trace-grid">
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.northboundTransport}</span>
-                                    <strong>{request.northbound_transport}</strong>
-                                  </div>
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.southboundTransport}</span>
-                                    <strong>{request.southbound_transport ?? messages.traffic.pendingTransport}</strong>
-                                  </div>
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.stickyProvider}</span>
-                                    <strong>{request.sticky_provider ?? messages.traffic.noStickyProvider}</strong>
-                                  </div>
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.fallbackReason}</span>
-                                    <strong>{request.fallback_reason ?? messages.traffic.noFallbackReason}</strong>
-                                  </div>
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.turnState}</span>
-                                    <strong>{request.turn_state_status ?? messages.traffic.noTurnState}</strong>
-                                  </div>
-                                  <div className="routing-trace-item">
-                                    <span>{messages.traffic.turnStateToken}</span>
-                                    <strong>
-                                      {request.turn_state_token_present
-                                        ? messages.traffic.present
-                                        : messages.traffic.absent}
-                                    </strong>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="expanded-columns">
-                                <div className="expanded-block">
-                                  <span className="surface-label">{messages.traffic.fallbackAttempts}</span>
-                                  {request.attempts.length === 0 ? (
-                                    <p>{messages.traffic.noRetryAttempts}</p>
-                                  ) : (
-                                    <div className="attempt-list">
-                                      {request.attempts.map((attempt, attemptIndex) => (
-                                        <div
-                                          key={`${request.id}-${attempt.provider}-${attempt.url}-${attemptIndex}`}
-                                          className="attempt-item"
-                                        >
-                                          <div>
-                                            <strong>{attempt.provider}</strong>
-                                            <span>{messages.traffic.providerAttempt(attempt.provider_attempt)}</span>
-                                            <span>{attempt.url}</span>
-                                          </div>
-                                          <div>
-                                            <strong>{attempt.outcome}</strong>
-                                            <span>{attempt.status_code ?? messages.traffic.noStatus}</span>
-                                            <span>{describeNextAction(attempt.next_action)}</span>
-                                            <span>{messages.traffic.attemptTransport(attempt.transport)}</span>
-                                            <span>{attempt.sticky ? messages.traffic.stickyAttempt : messages.traffic.nonStickyAttempt}</span>
-                                            {attempt.fallback_reason ? (
-                                              <span>{messages.traffic.attemptFallbackReason(attempt.fallback_reason)}</span>
-                                            ) : null}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="expanded-block">
-                                  <span className="surface-label">{messages.traffic.error}</span>
-                                  <p>{request.error ?? messages.traffic.noErrorRecorded}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
+              <motion.tbody layout>
+                <AnimatePresence mode="popLayout">
+                  {visibleRequests.map((request) => (
+                    <TrafficRow
+                      key={request.id}
+                      request={request}
+                      expanded={expandedRequestId === request.id}
+                      copyState={copyState}
+                      locale={locale}
+                      messages={messages}
+                      onToggleExpand={() => setExpandedRequestId(expandedRequestId === request.id ? null : request.id)}
+                      onCopyDebug={(req) => { void copyRequestDebugSummary(req) }}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.tbody>
             </table>
           </div>
         )}

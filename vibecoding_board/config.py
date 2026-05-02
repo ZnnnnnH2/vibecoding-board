@@ -69,6 +69,7 @@ class RetryPolicyConfig(BaseModel):
     )
     same_provider_retry_count: int = Field(default=0, ge=0)
     retry_interval_ms: int = Field(default=0, ge=0)
+    retry_exponential_backoff: bool = Field(default=False)
 
     @field_validator("retryable_status_codes")
     @classmethod

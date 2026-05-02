@@ -119,6 +119,7 @@ export type RetryPolicySummary = {
   provider_failure_status_codes: number[]
   same_provider_retry_count: number
   retry_interval_ms: number
+  retry_exponential_backoff: boolean
 }
 
 export type MetricsWindow = '24h' | '7d'
@@ -224,6 +225,7 @@ export type RetryPolicyFormState = {
   providerFailureStatusCodes: string
   sameProviderRetryCount: string
   retryIntervalMs: string
+  retryExponentialBackoff: boolean
 }
 
 export type HealthcheckSettingsFormState = {

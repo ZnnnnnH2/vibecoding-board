@@ -86,39 +86,40 @@ class ProviderRegistry:
     providers: list[RuntimeProvider]
     now_provider: Callable[[], datetime] = utc_now
     _states: dict[str, ProviderState] = field(init=False)
-    _lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    _locks: dict[str, asyncio.Lock] = field(init=False)
 
     def __post_init__(self) -> None:
         self._states = {
             provider.name: ProviderState(provider=provider) for provider in self.providers
         }
+        self._locks = {
+            provider.name: asyncio.Lock() for provider in self.providers
+        }
 
     async def get_candidates(self, model: str) -> list[ProviderSnapshot]:
-        async with self._lock:
-            now = self.now_provider()
-            states = [
-                ProviderSnapshot.from_state(state)
-                for state in self._states.values()
-                if state.supports_model(model) and state.is_available(now)
-            ]
+        now = self.now_provider()
+        states = []
+        for name, state in self._states.items():
+            async with self._locks[name]:
+                if state.supports_model(model) and state.is_available(now):
+                    states.append(ProviderSnapshot.from_state(state))
         return sorted(states, key=lambda state: (state.priority, state.name))
 
     async def get_preferred_candidate(self, model: str) -> ProviderSnapshot | None:
-        async with self._lock:
-            states = [
-                ProviderSnapshot.from_state(state)
-                for state in self._states.values()
-                if state.provider.enabled and state.supports_model(model)
-            ]
+        states = []
+        for name, state in self._states.items():
+            async with self._locks[name]:
+                if state.provider.enabled and state.supports_model(model):
+                    states.append(ProviderSnapshot.from_state(state))
         if not states:
             return None
         return sorted(states, key=lambda state: (state.priority, state.name))[0]
 
     async def list_states(self) -> list[ProviderSnapshot]:
-        async with self._lock:
-            snapshots = [
-                ProviderSnapshot.from_state(state) for state in self._states.values()
-            ]
+        snapshots = []
+        for name, state in self._states.items():
+            async with self._locks[name]:
+                snapshots.append(ProviderSnapshot.from_state(state))
         return sorted(snapshots, key=lambda state: (state.priority, state.name))
 
     async def import_states(
@@ -128,12 +129,12 @@ class ProviderRegistry:
         name_mapping: dict[str, str] | None = None,
     ) -> None:
         previous_map = {state.name: state for state in previous_states}
-        async with self._lock:
-            for name, state in self._states.items():
-                lookup_name = name_mapping.get(name, name) if name_mapping else name
-                previous = previous_map.get(lookup_name)
-                if previous is None:
-                    continue
+        for name, state in self._states.items():
+            lookup_name = name_mapping.get(name, name) if name_mapping else name
+            previous = previous_map.get(lookup_name)
+            if previous is None:
+                continue
+            async with self._locks[name]:
                 state.consecutive_failures = previous.consecutive_failures
                 state.cooldown_until = None if state.provider.always_alive else previous.cooldown_until
                 state.last_error = previous.last_error
@@ -142,7 +143,9 @@ class ProviderRegistry:
                 state.ws_unsupported = previous.ws_unsupported
 
     async def mark_success(self, provider_name: str) -> None:
-        async with self._lock:
+        if provider_name not in self._states:
+            return
+        async with self._locks[provider_name]:
             state = self._states[provider_name]
             state.consecutive_failures = 0
             state.cooldown_until = None
@@ -156,7 +159,9 @@ class ProviderRegistry:
         *,
         suppress_cooldown: bool = False,
     ) -> None:
-        async with self._lock:
+        if provider_name not in self._states:
+            return
+        async with self._locks[provider_name]:
             state = self._states[provider_name]
             now = self.now_provider()
             state.consecutive_failures += 1
@@ -169,7 +174,9 @@ class ProviderRegistry:
                 state.cooldown_until = now + timedelta(seconds=state.provider.cooldown_seconds)
 
     async def mark_exhausted_and_cooldown(self, provider_name: str, error: str) -> None:
-        async with self._lock:
+        if provider_name not in self._states:
+            return
+        async with self._locks[provider_name]:
             state = self._states[provider_name]
             now = self.now_provider()
             state.consecutive_failures = max(state.consecutive_failures + 1, state.provider.max_failures)
@@ -186,13 +193,17 @@ class ProviderRegistry:
         error: str | None = None,
     ) -> None:
         del error
-        async with self._lock:
+        if provider_name not in self._states:
+            return
+        async with self._locks[provider_name]:
             self._states[provider_name].ws_unsupported = True
 
     async def clear_ws_unsupported(self, provider_name: str) -> None:
-        async with self._lock:
+        if provider_name not in self._states:
+            return
+        async with self._locks[provider_name]:
             self._states[provider_name].ws_unsupported = False
 
     async def get_state(self, provider_name: str) -> ProviderSnapshot:
-        async with self._lock:
+        async with self._locks[provider_name]:
             return ProviderSnapshot.from_state(self._states[provider_name])

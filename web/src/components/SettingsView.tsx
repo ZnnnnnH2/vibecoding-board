@@ -213,6 +213,22 @@ export function SettingsView({
                   />
                   <small className="field-hint">{messages.settings.retryIntervalMsHint}</small>
                 </label>
+
+                <div className="settings-field settings-field-wide">
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={retryPolicyForm.retryExponentialBackoff}
+                      onChange={(event) => updateRetryPolicy('retryExponentialBackoff', event.target.checked)}
+                      onBlur={(event) =>
+                        commitRetryPolicy('retryExponentialBackoff', event.currentTarget.checked)
+                      }
+                      disabled={settingsBusy}
+                    />
+                    <span>{messages.settings.retryExponentialBackoff || "Exponential Backoff"}</span>
+                  </label>
+                  <small className="field-hint">{messages.settings.retryExponentialBackoffHint || "Increase wait time exponentially on subsequent retries."}</small>
+                </div>
               </div>
             </section>
 

@@ -112,6 +112,7 @@ class RequestLogStore:
             last_activity_at=now,
         )
         async with self._lock:
+            self._prune_expired_pending_locked(now)
             self._pending_entries[entry.id] = entry
         return entry.id
 

@@ -1,0 +1,28 @@
+{
+  "last_flushed_at": "2026-04-28T14:39:05.563250+00:00",
+  "retention_hours": 720,
+  "buckets": [
+    {
+      "bucket_start": "2026-04-28T14:00:00+00:00",
+      "requests": 1,
+      "success_count": 1,
+      "interrupted_count": 0,
+      "error_count": 0,
+      "total_tokens": 2,
+      "duration_sum_ms": 8,
+      "duration_count": 1,
+      "ttfb_sum_ms": 4,
+      "ttfb_count": 1,
+      "failover_requests": 0,
+      "failover_next_provider_count": 0,
+      "retry_same_provider_count": 0,
+      "retryable_error_count": 0,
+      "providers": {
+        "relay_a": {
+          "requests": 1,
+          "total_tokens": 2
+        }
+      }
+    }
+  ]
+}

@@ -57,7 +57,7 @@ class RuntimeManager:
         config = loaded_config.normalized()
         runtime = await self._build_runtime(config, previous=self._runtime)
         if loaded_config.model_dump(mode="python") != config.model_dump(mode="python"):
-            self.config_store.save(config)
+            await self.config_store.save(config)
         self._runtime = runtime
         return runtime
 
@@ -265,7 +265,7 @@ class RuntimeManager:
         name_mapping: dict[str, str] | None = None,
     ) -> RuntimeSnapshot:
         runtime = await self._build_runtime(config, previous=self.current(), name_mapping=name_mapping)
-        self.config_store.save(config)
+        await self.config_store.save(config)
         self._runtime = runtime
         return runtime
 

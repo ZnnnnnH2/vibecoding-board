@@ -4,11 +4,14 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
+import logging
 from pathlib import Path
 from typing import Literal
 
 from vibecoding_board.request_log import AttemptLogEntry, UsageLogEntry
 
+
+LOGGER = logging.getLogger(__name__)
 
 MetricsWindow = Literal["24h", "7d"]
 
@@ -377,7 +380,10 @@ class AdminMetricsStore:
     async def _flush_after_delay(self) -> None:
         try:
             await asyncio.sleep(self.flush_interval_seconds)
-            await self.flush()
+            try:
+                await self.flush()
+            except Exception:
+                LOGGER.exception("Failed to flush admin metrics to disk")
         except asyncio.CancelledError:
             raise
 
